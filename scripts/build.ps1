@@ -8,7 +8,7 @@
 # Examples:
 #   .\build.ps1 -DnSpyPath "D:\tools\dnSpy"              # Build Release, DLLs from dnSpy/bin
 #   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Clean       # Clean + build Release
-#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy      # Build + deploy to build\Extensions\
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy      # Build + deploy to dnSpy\Extensions
 #   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Configuration Debug  # Build Debug
 #   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -DeployDir "D:\tools\dnSpy\Extensions"
 
@@ -17,7 +17,7 @@ param(
     [string]$DnSpyPath,           # Path to dnSpy installation (e.g. D:\tools\dnSpy)
     [switch]$Clean,               # Clean build artifacts before building
     [switch]$Deploy,              # Deploy extension after building
-    [string]$DeployDir = "",      # Custom deploy path (default: build\Extensions\)
+    [string]$DeployDir = "",      # Custom deploy path (default: <DnSpyPath>\Extensions)
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release"  # Build configuration (default: Release)
 )
@@ -47,21 +47,31 @@ if ($missingDlls.Count -gt 0) {
     exit 1
 }
 
-# Check dnSpy runtime version compatibility
+# Read project target framework from csproj (needed for both TFM check and BinDir)
+$projectFileForTfm = Join-Path $WorkspaceRoot "src\dnSpy.MCP\dnSpy.MCP.csproj"
+$csprojContent = Get-Content $projectFileForTfm -Raw
+if ($csprojContent -match '<TargetFramework>([^<]+)</TargetFramework>') {
+    $projectTfm = $Matches[1]
+} else {
+    $projectTfm = "net8.0-windows"
+}
+
+# Check dnSpy runtime version compatibility (only when runtimeconfig exists)
 $runtimeConfig = Join-Path $DnSpyBin "dnSpy.runtimeconfig.json"
 if (Test-Path $runtimeConfig) {
     $config = Get-Content $runtimeConfig -Raw | ConvertFrom-Json
     $dnSpyTfm = $config.runtimeOptions.tfm
-    $projectTfm = "net8.0-windows"
+    $dnSpyBase = $dnSpyTfm -replace '-.*$', ''
+    $projectBase = $projectTfm -replace '-.*$', ''
 
-    if ($dnSpyTfm -ne $projectTfm) {
+    if ($dnSpyBase -ne $projectBase) {
         Write-Host "[ERROR] Framework version mismatch!" -ForegroundColor Red
         Write-Host ""
-        Write-Host "  dnSpy runtime: $dnSpyTfm" -ForegroundColor Red
-        Write-Host "  Project target: $projectTfm" -ForegroundColor Red
+        Write-Host "  dnSpy runtime: $dnSpyBase (from $dnSpyTfm)" -ForegroundColor Red
+        Write-Host "  Project target: $projectBase (from $projectTfm)" -ForegroundColor Red
         Write-Host ""
         Write-Host "Solution options:" -ForegroundColor Yellow
-        Write-Host "  1. Upgrade project to $dnSpyTfm in dnSpy.MCP.csproj (requires .NET 10 SDK)" -ForegroundColor Yellow
+        Write-Host "  1. Upgrade project to $dnSpyBase in dnSpy.MCP.csproj (requires .NET $($dnSpyBase -replace 'net', '') SDK)" -ForegroundColor Yellow
         Write-Host "  2. Use dnSpyEx source build instead (supports net8.0)" -ForegroundColor Yellow
         Write-Host "     - Clone: https://github.com/dnSpyEx/dnSpy" -ForegroundColor Gray
         Write-Host "     - Copy src/dnSpy.MCP/ into dnSpy/Extensions/" -ForegroundColor Gray
@@ -70,12 +80,10 @@ if (Test-Path $runtimeConfig) {
     }
 }
 
-# Use custom deploy dir or default
+# Use custom deploy dir or default to dnSpy Extensions
 if ([string]::IsNullOrWhiteSpace($DeployDir)) {
-    $DeployDir = Join-Path $WorkspaceRoot "build\Extensions"
-    $IsLocal = $true
+    $DeployDir = Join-Path $DnSpyBin "Extensions"
 } else {
-    $IsLocal = $false
     $DeployDir = $DeployDir.TrimEnd('\', '/')
 }
 
@@ -83,7 +91,7 @@ if ([string]::IsNullOrWhiteSpace($DeployDir)) {
 $StandaloneDir = Join-Path $WorkspaceRoot "src\dnSpy.MCP"
 $ProjectDir = $StandaloneDir
 $ProjectFile = Join-Path $ProjectDir "dnSpy.MCP.csproj"
-$BinDir = Join-Path $ProjectDir "bin\$Configuration\net8.0-windows"
+$BinDir = Join-Path $ProjectDir "bin\$Configuration\$projectTfm"
 $ObjDir = Join-Path $ProjectDir "obj"
 
 Write-Host "=== dnSpy MCP ===" -ForegroundColor Cyan
@@ -149,18 +157,16 @@ if ($Deploy) {
     foreach ($f in $oldExt) {
         Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
     }
-    # Clean old MCP/ASP.NET Core DLLs (local deploy only)
-    if ($IsLocal) {
-        $oldPatterns = @(
-            "ModelContextProtocol*.dll", "Microsoft.AspNetCore*.dll",
-            "Microsoft.AspNetCore.App.*", "Microsoft.Extensions.*.dll",
-            "aspnetcorev2_inprocess.dll"
-        )
-        foreach ($pattern in $oldPatterns) {
-            $files = Get-ChildItem $DeployDir -Filter $pattern -ErrorAction SilentlyContinue
-            foreach ($f in $files) {
-                Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
-            }
+    # Clean old MCP/ASP.NET Core DLLs
+    $oldPatterns = @(
+        "ModelContextProtocol*.dll", "Microsoft.AspNetCore*.dll",
+        "Microsoft.AspNetCore.App.*", "Microsoft.Extensions.*.dll",
+        "aspnetcorev2_inprocess.dll"
+    )
+    foreach ($pattern in $oldPatterns) {
+        $files = Get-ChildItem $DeployDir -Filter $pattern -ErrorAction SilentlyContinue
+        foreach ($f in $files) {
+            Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
         }
     }
 
@@ -179,11 +185,9 @@ if ($Deploy) {
 # Summary
 Write-Host ""
 Write-Host "[Ready]" -ForegroundColor Yellow
+Write-Host "  Deploy:  $DeployDir\dnSpy.MCP.x.dll"
 if ($Deploy) {
-    Write-Host "  Deploy:  $DeployDir\dnSpy.MCP.x.dll"
-    if ($IsLocal) {
-        Write-Host "  Log:     $WorkspaceRoot\build\Extensions\mcp-server.log"
-    }
+    Write-Host "  Log:     $DnSpyBin\mcp-server.log"
 }
 Write-Host "  Port:    5150"
 Write-Host ""
