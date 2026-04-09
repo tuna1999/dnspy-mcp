@@ -1,0 +1,166 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Download dnSpy DLLs from GitHub Releases (used as deps/ for standalone build)
+      - name: Download dnSpy binaries
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $tag = "v6.5.1"
+          $repo = "dnSpyEx/dnSpy"
+          $url = "https://api.github.com/repos/$repo/releases/tags/$tag"
+          Write-Host "Fetching release info from $url"
+
+          $headers = @{
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          # Use GitHub token if available (higher rate limit, avoids 403)
+          if ($env:GITHUB_TOKEN) {
+            $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+          }
+
+          $resp = Invoke-RestMethod -Uri $url -Headers $headers
+          $assets = $resp.assets | Where-Object { $_.name -match "net8\.0.*win.*x64.*\.zip" }
+
+          # Fallback: try net-win64 naming
+          if (-not $assets) {
+            Write-Host "Trying fallback: dnSpy-net-win64.zip..."
+            $assets = $resp.assets | Where-Object { $_.name -eq "dnSpy-net-win64.zip" }
+          }
+
+          if (-not $assets) {
+            Write-Host "Available assets:"
+            $resp.assets | ForEach-Object { Write-Host "  $($_.name)" }
+            Write-Host "##[error]No suitable dnSpy zip asset found. Please check the release page and update the download step."
+            exit 1
+          }
+
+          if ($assets.Count -ne 1) {
+            Write-Host "##[error]Expected exactly one matching dnSpy zip asset, found $($assets.Count)."
+            $assets | ForEach-Object { Write-Host "  - $($_.name)" }
+            exit 1
+          }
+
+          $asset = $assets[0]
+          Write-Host "Downloading: $($asset.name)"
+          $downloadUrl = $asset.browser_download_url
+          $zipPath = "$env:TEMP\dnspy.zip"
+
+          Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -ErrorAction Stop
+          Write-Host "Download complete: $zipPath"
+
+          $extractDir = "$env:TEMP\dnspy"
+          if (Test-Path $extractDir) {
+            Remove-Item $extractDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+
+          Write-Host "Extracting to $extractDir"
+          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+          # Locate the bin folder
+          $binDir = Get-ChildItem -Path $extractDir -Recurse -Filter "dnSpy.exe" | Select-Object -First 1 | Split-Path -Parent
+          if (-not $binDir) {
+            Write-Host "##[error]Could not find dnSpy.exe in extracted archive."
+            Get-ChildItem $extractDir -Recurse | Select-Object FullName | Format-Table -AutoSize
+            exit 1
+          }
+          Write-Host "Found dnSpy at: $binDir"
+
+          # Copy required DLLs to deps/
+          New-Item -ItemType Directory -Path "deps" -Force | Out-Null
+          $required = @(
+            "dnSpy.Contracts.DnSpy.dll",
+            "dnSpy.Contracts.Logic.dll",
+            "ICSharpCode.Decompiler.dll",
+            "dnlib.dll"
+          )
+          foreach ($dll in $required) {
+            $src = Join-Path $binDir $dll
+            if (Test-Path $src) {
+              Copy-Item $src "deps/" -Force
+              Write-Host "  Copied: $dll"
+            } else {
+              Write-Host "  Missing: $dll (expected at $src)"
+              Get-ChildItem $binDir -Filter "*.dll" | Select-Object Name | Format-Table -AutoSize
+            }
+          }
+
+          Write-Host "deps/ ready with $((Get-ChildItem deps/*.dll).Count) DLLs."
+        shell: pwsh
+
+      - name: Verify deps
+        run: |
+          $required = @(
+            "dnSpy.Contracts.DnSpy.dll",
+            "dnSpy.Contracts.Logic.dll",
+            "ICSharpCode.Decompiler.dll",
+            "dnlib.dll"
+          )
+
+          $missing = @()
+          foreach ($dll in $required) {
+            if (-not (Test-Path (Join-Path "deps" $dll))) {
+              $missing += $dll
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            Write-Host "##[error]Missing required DLLs in deps/:"
+            $missing | ForEach-Object { Write-Host "  - $_" }
+            exit 1
+          }
+
+          Write-Host "All required deps are present."
+
+      - name: Build
+        run: dotnet build src/dnSpy.MCP/dnSpy.MCP.csproj -c Release --nologo -v q
+
+      - name: Check for build errors
+        run: |
+          $dll = "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll"
+          if (Test-Path $dll) {
+            $size = [Math]::Round((Get-Item $dll).Length / 1KB, 1)
+            Write-Host "Build succeeded: $dll ($size KB)"
+          } else {
+            Write-Host "##[error]DLL not found at $dll"
+            exit 1
+          }
+
+      # Archive artifacts (optional deploy-ready package)
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dnSpy-MCP-${{ runner.os }}
+          path: |
+            src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll
+            src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.deps.json
+            src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.pdb
+          retention-days: 7

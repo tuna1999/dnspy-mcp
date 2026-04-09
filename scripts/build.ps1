@@ -1,25 +1,74 @@
 # Build and deploy dnSpy MCP extension
 # Supports standalone (src/dnSpy.MCP/) layout
-# Usage: .\build.ps1 [-Clean] [-Deploy] [-DeployDir <path>] [-Configuration <Debug|Release>]
+# Usage: .\build.ps1 [-DnSpyPath <path>] [-Clean] [-Deploy] [-DeployDir <path>] [-Configuration <Debug|Release>]
+#
+# Required:
+#   -DnSpyPath  Path to dnSpy installation folder (must contain dnSpy.exe in its bin/ folder)
 #
 # Examples:
-#   .\build.ps1                              # Build Release only (default)
-#   .\build.ps1 -Clean                      # Clean + build Release
-#   .\build.ps1 -Deploy                     # Build + deploy to build\Extensions\
-#   .\build.ps1 -Clean -Deploy              # Clean + build + deploy
-#   .\build.ps1 -Configuration Debug         # Build Debug
-#   .\build.ps1 -DeployDir "D:\tools\dnSpy\Extensions"  # Deploy to dnSpy folder
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy"              # Build Release, DLLs from dnSpy/bin
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Clean       # Clean + build Release
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy      # Build + deploy to build\Extensions\
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Configuration Debug  # Build Debug
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -DeployDir "D:\tools\dnSpy\Extensions"
 
 param(
-    [switch]$Clean,                # Clean build artifacts before building
-    [switch]$Deploy,               # Deploy extension after building
-    [string]$DeployDir = "",    # Custom deploy path (default: build\Extensions\)
+    [Parameter(Mandatory = $true, Position = 0)]
+    [string]$DnSpyPath,           # Path to dnSpy installation (e.g. D:\tools\dnSpy)
+    [switch]$Clean,               # Clean build artifacts before building
+    [switch]$Deploy,              # Deploy extension after building
+    [string]$DeployDir = "",      # Custom deploy path (default: build\Extensions\)
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release"  # Build configuration (default: Release)
 )
 
 $ErrorActionPreference = "Stop"
 $WorkspaceRoot = Split-Path -Parent (Split-Path $MyInvocation.MyCommand.Path -Parent)
+
+# Resolve dnSpy bin path (DLLs must be in <DnSpyPath>/bin/)
+$DnSpyPath = $DnSpyPath.TrimEnd('\', '/')
+$DnSpyBin = Join-Path $DnSpyPath "bin"
+
+# Validate required DLLs
+$RequiredDlls = @(
+    "dnSpy.Contracts.DnSpy.dll",
+    "dnSpy.Contracts.Logic.dll",
+    "ICSharpCode.Decompiler.dll",
+    "dnlib.dll"
+)
+$missingDlls = $RequiredDlls | Where-Object { -not (Test-Path (Join-Path $DnSpyBin $_)) }
+if ($missingDlls.Count -gt 0) {
+    Write-Host "[ERROR] Missing required DLLs in: $DnSpyBin" -ForegroundColor Red
+    $missingDlls | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+    Write-Host ""
+    Write-Host "Ensure -DnSpyPath points to a valid dnSpy installation." -ForegroundColor Yellow
+    Write-Host "The following DLLs must exist in the dnSpy bin folder:" -ForegroundColor Yellow
+    $RequiredDlls | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
+    exit 1
+}
+
+# Check dnSpy runtime version compatibility
+$runtimeConfig = Join-Path $DnSpyBin "dnSpy.runtimeconfig.json"
+if (Test-Path $runtimeConfig) {
+    $config = Get-Content $runtimeConfig -Raw | ConvertFrom-Json
+    $dnSpyTfm = $config.runtimeOptions.tfm
+    $projectTfm = "net8.0-windows"
+
+    if ($dnSpyTfm -ne $projectTfm) {
+        Write-Host "[ERROR] Framework version mismatch!" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "  dnSpy runtime: $dnSpyTfm" -ForegroundColor Red
+        Write-Host "  Project target: $projectTfm" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Solution options:" -ForegroundColor Yellow
+        Write-Host "  1. Upgrade project to $dnSpyTfm in dnSpy.MCP.csproj (requires .NET 10 SDK)" -ForegroundColor Yellow
+        Write-Host "  2. Use dnSpyEx source build instead (supports net8.0)" -ForegroundColor Yellow
+        Write-Host "     - Clone: https://github.com/dnSpyEx/dnSpy" -ForegroundColor Gray
+        Write-Host "     - Copy src/dnSpy.MCP/ into dnSpy/Extensions/" -ForegroundColor Gray
+        Write-Host "     - Build via dnSpy.sln" -ForegroundColor Gray
+        exit 1
+    }
+}
 
 # Use custom deploy dir or default
 if ([string]::IsNullOrWhiteSpace($DeployDir)) {
@@ -38,10 +87,11 @@ $BinDir = Join-Path $ProjectDir "bin\$Configuration\net8.0-windows"
 $ObjDir = Join-Path $ProjectDir "obj"
 
 Write-Host "=== dnSpy MCP ===" -ForegroundColor Cyan
-Write-Host "  Project: $ProjectDir"
-Write-Host "  Config:  $Configuration"
+Write-Host "  Project:  $ProjectDir"
+Write-Host "  Config:   $Configuration"
+Write-Host "  DnSpyBin: $DnSpyBin"
 if ($Deploy) {
-    Write-Host "  Deploy:  $DeployDir"
+    Write-Host "  Deploy:   $DeployDir"
 }
 Write-Host ""
 
@@ -68,7 +118,7 @@ if (-not (Test-Path $ProjectFile)) {
     exit 1
 }
 
-$buildOutput = & dotnet build $ProjectFile -c $Configuration 2>&1
+$buildOutput = & dotnet build $ProjectFile -c $Configuration -p:DnSpyBin="$DnSpyBin" 2>&1
 $buildText = $buildOutput | Out-String
 
 if ($buildText -notmatch "Build succeeded") {
