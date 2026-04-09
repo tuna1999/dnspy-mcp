@@ -221,6 +221,88 @@ The official MCP SDK (`ModelContextProtocol` 1.2.0) pulls `Microsoft.Extensions.
 
 The project references pre-built DLLs from `deps/`, enabling fast iteration without cloning the full dnSpy source. For integrated builds as part of dnSpy.sln, clone [dnSpyEx](https://github.com/dnSpyEx/dnSpy) and copy `src/dnSpy.MCP/` into `Extensions/`.
 
+## Connecting AI Agents
+
+This MCP server exposes dnSpy's decompilation and analysis tools via the standard MCP protocol over HTTP at `http://127.0.0.1:5150/`. Most modern AI agents support HTTP MCP servers natively — no bridge package needed.
+
+### Claude Code (recommended)
+
+Use the `claude mcp add` command to add the server. Choose a scope:
+
+```bash
+# Local scope (default) — only this project, stored in ~/.claude.json
+claude mcp add --transport http dnspy http://127.0.0.1:5150
+
+# Project scope — shared with team via .mcp.json (check into git)
+claude mcp add --transport http dnspy --scope project http://127.0.0.1:5150
+
+# User scope — all your projects
+claude mcp add --transport http dnspy --scope user http://127.0.0.1:5150
+```
+
+**Project scope** generates a `.mcp.json` at the project root:
+
+```json
+{
+  "mcpServers": {
+    "dnspy": {
+      "type": "http",
+      "url": "http://127.0.0.1:5150"
+    }
+  }
+}
+```
+
+**Local/User scope** writes to `~/.claude.json` under the project path:
+
+```json
+{
+  "projects": {
+    "/path/to/your/project": {
+      "mcpServers": {
+        "dnspy": {
+          "type": "http",
+          "url": "http://127.0.0.1:5150"
+        }
+      }
+    }
+  }
+}
+```
+
+Other useful commands:
+```bash
+claude mcp list          # list all configured servers
+claude mcp get dnspy     # show config for a server
+claude mcp remove dnspy  # remove a server
+```
+
+### Other AI Editors
+
+| Editor | Config file | Format |
+|--------|------------|--------|
+| **Cursor** | `~/.cursor/mcp.json` | `{ "mcpServers": { "dnspy": { "url": "http://127.0.0.1:5150/" } } }` |
+| **VS Code** (Cline/Roo) | `.vscode/mcp.json` | Same as above |
+
+### Verification
+
+1. Start dnSpy and open an assembly
+2. Menu → **MCP Server** → **Start**
+3. In your AI agent, verify the connection:
+
+```
+You should see 21 MCP tools available:
+- decompile_method
+- decompile_type
+- search_types
+- grep
+- get_xrefs_to
+- assembly_overview
+- ...and more
+```
+
+If the agent does not auto-discover the tools, tell it: "Use the dnSpy MCP server at `http://127.0.0.1:5150/` to access decompilation and analysis tools."
+
 ## License
 
 This project is licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html), consistent with dnSpy's license.
