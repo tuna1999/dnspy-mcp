@@ -85,14 +85,19 @@ jobs:
           Write-Host "Extracting to $extractDir"
           Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
-          # Locate the bin folder
-          $binDir = Get-ChildItem -Path $extractDir -Recurse -Filter "dnSpy.exe" | Select-Object -First 1 | Split-Path -Parent
-          if (-not $binDir) {
-            Write-Host "##[error]Could not find dnSpy.exe in extracted archive."
-            Get-ChildItem $extractDir -Recurse | Select-Object FullName | Format-Table -AutoSize
-            exit 1
+          # Locate folder containing required DLLs (prefer bin/ if present)
+          $binDir = Join-Path $extractDir "bin"
+          if (-not (Test-Path $binDir)) {
+            # Fallback: derive from dnSpy.exe parent
+            $exePath = Get-ChildItem -Path $extractDir -Recurse -Filter "dnSpy.exe" | Select-Object -First 1
+            if (-not $exePath) {
+              Write-Host "##[error]Could not find dnSpy.exe in extracted archive."
+              Get-ChildItem $extractDir -Recurse | Select-Object FullName | Format-Table -AutoSize
+              exit 1
+            }
+            $binDir = Split-Path $exePath.FullName -Parent
           }
-          Write-Host "Found dnSpy at: $binDir"
+          Write-Host "Using DLL source dir: $binDir"
 
           # Copy required DLLs to deps/
           New-Item -ItemType Directory -Path "deps" -Force | Out-Null
@@ -102,15 +107,23 @@ jobs:
             "ICSharpCode.Decompiler.dll",
             "dnlib.dll"
           )
+          $missing = @()
           foreach ($dll in $required) {
             $src = Join-Path $binDir $dll
             if (Test-Path $src) {
               Copy-Item $src "deps/" -Force
               Write-Host "  Copied: $dll"
             } else {
-              Write-Host "  Missing: $dll (expected at $src)"
-              Get-ChildItem $binDir -Filter "*.dll" | Select-Object Name | Format-Table -AutoSize
+              $missing += $dll
+              Write-Host "  Missing: $dll" -ForegroundColor Red
             }
+          }
+
+          if ($missing.Count -gt 0) {
+            Write-Host "##[error]Failed to copy required DLLs: $($missing -join ', ')"
+            Write-Host "  binDir = $binDir"
+            Get-ChildItem $binDir -Filter "*.dll" | Select-Object Name | Format-Table -AutoSize
+            exit 1
           }
 
           Write-Host "deps/ ready with $((Get-ChildItem deps/*.dll).Count) DLLs."
