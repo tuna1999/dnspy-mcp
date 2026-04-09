@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>dnSpy.MCP.x</AssemblyName>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <TargetFramework>net8.0-windows</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Path to dnSpy bin folder containing DLLs -->
+    <DnSpyBin>..\..\deps</DnSpyBin>
+  </PropertyGroup>
+
+  <!-- Assembly versions from dnSpy's DnSpyCommon.props -->
+  <PropertyGroup>
+    <MSVSCompositionVersion>17.13.41</MSVSCompositionVersion>
+    <MSVSTextVersion>15.5.27130</MSVSTextVersion>
+    <SCCompositionVersion>10.0.5</SCCompositionVersion>
+  </PropertyGroup>
+
+  <!-- References to dnSpy contracts (DLL paths) -->
+  <ItemGroup>
+    <Reference Include="dnSpy.Contracts.DnSpy">
+      <HintPath>$(DnSpyBin)\dnSpy.Contracts.DnSpy.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="dnSpy.Contracts.Logic">
+      <HintPath>$(DnSpyBin)\dnSpy.Contracts.Logic.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ICSharpCode.Decompiler">
+      <HintPath>$(DnSpyBin)\ICSharpCode.Decompiler.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="dnlib">
+      <HintPath>$(DnSpyBin)\dnlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- NuGet package references -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.Text.UI.Wpf" Version="$(MSVSTextVersion)" />
+    <PackageReference Include="System.ComponentModel.Composition" Version="$(SCCompositionVersion)" />
+    <PackageReference Include="Microsoft.VisualStudio.Composition" Version="$(MSVSCompositionVersion)" />
+  </ItemGroup>
+
+</Project>

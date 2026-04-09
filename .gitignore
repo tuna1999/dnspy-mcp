@@ -1,0 +1,31 @@
+# Build outputs
+**/bin/
+**/obj/
+build/
+
+# User / IDE
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OMC state
+.omc/
+**/.omc/
+
+# Logs
+*.log
+
+# Archives
+*.zip
+
+# dnSpy source (clone separately if needed for integrated build)
+dnspy-source/
+
+# External DLL dependencies (copy from dnSpy bin to deps/)
+deps/
+
+# Editor
+*~
+
