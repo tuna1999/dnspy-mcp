@@ -178,7 +178,7 @@ dnspy_mcp/
 │       │   ├── ToolRegistry.cs      # Reflection-based tool discovery
 │       │   ├── McpLogger.cs         # Logging: file + Output Window
 │       │   └── McpServerOptions.cs  # Port/host configuration
-│       ├── Tools/                   # 6 tool classes, 21 tools total
+│       ├── Tools/                   # 10 tool classes, 29 tools total
 │       ├── Helpers/
 │       │   ├── MethodResolver.cs    # Resolve methods/types by name/token
 │       │   └── TextDecompilerOutput.cs
