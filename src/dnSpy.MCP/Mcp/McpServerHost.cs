@@ -39,9 +39,6 @@ namespace dnSpy.MCP.Mcp {
 
             _cts = new CancellationTokenSource();
 
-            // Initialize DnSpyContext for the tools
-            DnSpyContext.Initialize(_documentService!, _decompilerService!);
-
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://127.0.0.1:{_options.Port}/");
             _listener.Start();

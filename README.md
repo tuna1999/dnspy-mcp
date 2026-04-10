@@ -13,7 +13,7 @@ dnSpy loads extension → MCP Server menu → Start → HttpListener on :5150
 
 The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.NET Core or external dependencies required. AI agents connect via standard MCP protocol over HTTP.
 
-## Tools (21)
+## Tools (25)
 
 ### Decompiler
 | Tool | Description |
@@ -37,6 +37,26 @@ The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.
 | `get_method_signatures` | Method metadata: parameters, return type, flags, generic params |
 | `get_type_hierarchy` | Inheritance chain, interfaces, member counts |
 | `get_method_body` | IL bytes with MaxStack/InitLocals info |
+| `get_il_opcodes_formatted` | Formatted IL opcodes with offsets and line indices |
+| `update_method_body` | Patch a method body using C# statements (dry-run supported) |
+
+### UI & Navigation
+| Tool | Description |
+|------|-------------|
+| `get_selected_node` | Get the currently selected node in dnSpy tree view |
+| `refresh_u_i` | Refresh tree view UI after metadata changes |
+
+### Rename
+| Tool | Description |
+|------|-------------|
+| `rename_namespace` | Rename a namespace across matching types (dry-run supported) |
+| `rename_class` | Rename one class in an assembly+namespace (dry-run supported) |
+| `rename_method` | Rename methods by exact or partial match (dry-run supported) |
+
+### Namespace
+| Tool | Description |
+|------|-------------|
+| `get_global_namespaces` | List all types in the global namespace |
 
 ### Cross-References
 | Tool | Description |
@@ -291,7 +311,7 @@ claude mcp remove dnspy  # remove a server
 3. In your AI agent, verify the connection:
 
 ```
-You should see 21 MCP tools available:
+You should see 25 MCP tools available:
 - decompile_method
 - decompile_type
 - search_types
