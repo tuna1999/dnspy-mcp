@@ -71,16 +71,34 @@ namespace dnSpy.MCP.Tools {
             }
         }
 
-        [Description("Refreshes all open document tabs in dnSpy to reflect any assembly modifications made by MCP tools.")]
-        public static string RefreshUI() {
-            var tabService = DnSpyContext.TabService;
+        /// <summary>
+        /// Dispatcher-aware tree refresh for use by rename/patch tools.
+        /// Called on background MCP thread; must marshal to UI thread.
+        /// </summary>
+        internal static void RefreshTreeViewOnUIThread() {
             var treeView = DnSpyContext.TreeView;
-            if (tabService == null && treeView == null)
-                return "Error: TabService and TreeView not available.";
+            if (treeView == null)
+                return;
 
             try {
                 RunOnUIThread(() => {
-                    treeView?.TreeView?.RefreshAllNodes();
+                    treeView.TreeView?.RefreshAllNodes();
+                });
+            }
+            catch {
+                // best-effort
+            }
+        }
+
+        [Description("Refreshes all open document tabs in dnSpy to reflect any assembly modifications made by MCP tools.")]
+        public static string RefreshUI() {
+            var treeView = DnSpyContext.TreeView;
+            if (treeView == null)
+                return "Error: TreeView not available.";
+
+            try {
+                RunOnUIThread(() => {
+                    treeView.TreeView?.RefreshAllNodes();
                 });
             }
             catch (Exception ex) {

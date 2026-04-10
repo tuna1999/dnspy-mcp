@@ -198,27 +198,8 @@ namespace dnSpy.MCP.Tools {
             if (module == null)
                 return "";
 
-            var refreshed = false;
-
-            try {
-                var tabService = DnSpyContext.TabService;
-                if (tabService != null && doc != null) {
-                    tabService.RefreshModifiedDocument(doc);
-                    refreshed = true;
-                }
-            }
-            catch {
-                // RefreshModifiedDocument is best-effort
-            }
-
-            if (!refreshed) {
-                try {
-                    DnSpyContext.TreeView?.TreeView?.RefreshAllNodes();
-                }
-                catch {
-                    // TreeView refresh is best-effort
-                }
-            }
+            // Refresh tree view on UI thread after metadata rename.
+            TreeViewTools.RefreshTreeViewOnUIThread();
 
             return " (changes applied in-memory. Use dnSpy's File > Save Module to persist to disk.)";
         }
