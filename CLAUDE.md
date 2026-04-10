@@ -45,7 +45,7 @@ dnspy_mcp/
 │   │   ├── ToolRegistry.cs   # Reflection-based tool discovery
 │   │   ├── McpLogger.cs     # File + Output Window logging
 │   │   └── McpServerOptions.cs
-│   ├── Tools/                # 10 tool classes, 29 tools
+│   ├── Tools/                # 10 tool classes, 28 tools
 │   └── Helpers/
 │       ├── MethodResolver.cs
 │       └── TextDecompilerOutput.cs
@@ -113,7 +113,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
           → decompilerService.Decompiler.Decompile(method, output, new DecompilationContext())
 ```
 
-## Available MCP Tools (29)
+## Available MCP Tools (28)
 
 ### Decompiler
 | Tool | Description |
@@ -145,7 +145,6 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 |------|-------------|
 | `get_xrefs_to` | Find all references to a method or field |
 | `get_callees` | Methods/fields called by a method |
-| `get_callers` | Alias for `get_xrefs_to` |
 
 ### Assembly
 | Tool | Description |

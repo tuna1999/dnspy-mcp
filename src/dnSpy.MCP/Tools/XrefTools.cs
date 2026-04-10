@@ -88,8 +88,5 @@ namespace dnSpy.MCP.Tools {
             sb.AppendLine($"\nTotal: {callees.Count} calls, {fieldRefs.Count} field refs");
             return sb.ToString();
         }
-
-        [Description("Shorthand for get_xrefs_to.")]
-        public static string GetCallers(string methodFullname) => GetXrefsTo(methodFullname);
     }
 }

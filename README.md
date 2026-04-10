@@ -13,7 +13,7 @@ dnSpy loads extension → MCP Server menu → Start → HttpListener on :5150
 
 The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.NET Core or external dependencies required. AI agents connect via standard MCP protocol over HTTP.
 
-## Tools (29)
+## Tools (28)
 
 ### Decompiler
 | Tool | Description |
@@ -63,7 +63,6 @@ The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.
 |------|-------------|
 | `get_xrefs_to` | Find all references to a method or field |
 | `get_callees` | Methods and fields called by a method |
-| `get_callers` | Alias for `get_xrefs_to` |
 
 ### Assembly
 | Tool | Description |
@@ -178,7 +177,7 @@ dnspy_mcp/
 │       │   ├── ToolRegistry.cs      # Reflection-based tool discovery
 │       │   ├── McpLogger.cs         # Logging: file + Output Window
 │       │   └── McpServerOptions.cs  # Port/host configuration
-│       ├── Tools/                   # 10 tool classes, 29 tools total
+│       ├── Tools/                   # 10 tool classes, 28 tools total
 │       ├── Helpers/
 │       │   ├── MethodResolver.cs    # Resolve methods/types by name/token
 │       │   └── TextDecompilerOutput.cs
@@ -311,7 +310,7 @@ claude mcp remove dnspy  # remove a server
 3. In your AI agent, verify the connection:
 
 ```
-You should see 29 MCP tools available:
+You should see 28 MCP tools available:
 - decompile_method
 - decompile_type
 - search_types
