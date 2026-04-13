@@ -121,11 +121,18 @@ namespace dnSpy.MCP.Helpers {
             }
         }
 
+        private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
+
         private bool MatchesPattern(string input, string pattern, StringComparison comparison) {
             if (string.IsNullOrEmpty(input)) return false;
             if (pattern.StartsWith("regex:", StringComparison.OrdinalIgnoreCase)) {
                 var regex = pattern.Substring(6);
-                return System.Text.RegularExpressions.Regex.IsMatch(input, regex);
+                try {
+                    return System.Text.RegularExpressions.Regex.IsMatch(input, regex, System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
+                }
+                catch (System.Text.RegularExpressions.RegexMatchTimeoutException) {
+                    return false;
+                }
             }
             return input.Contains(pattern, comparison);
         }

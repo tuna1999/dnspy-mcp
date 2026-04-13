@@ -59,9 +59,18 @@ namespace dnSpy.MCP.Tools {
                     foreach (var type in mod.GetTypes()) {
                         var fullName = type.FullName?.ToString();
                         if (string.IsNullOrEmpty(fullName)) continue;
-                        if (pattern == null ||
-                            System.Text.RegularExpressions.Regex.IsMatch(fullName, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+                        if (pattern == null) {
                             types.Add(fullName);
+                            continue;
+                        }
+
+                        try {
+                            if (System.Text.RegularExpressions.Regex.IsMatch(fullName, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2))) {
+                                types.Add(fullName);
+                            }
+                        }
+                        catch (System.Text.RegularExpressions.RegexMatchTimeoutException) {
+                            // treat timeout as no-match
                         }
                     }
                 }

@@ -54,7 +54,7 @@ namespace dnSpy.MCP.Mcp {
             while (!ct.IsCancellationRequested && _listener != null && _listener.IsListening) {
                 try {
                     var context = await _listener.GetContextAsync().WaitAsync(ct);
-                    _ = Task.Run(() => HandleRequest(context));
+                    _ = HandleRequest(context);
                 }
                 catch (OperationCanceledException) {
                     break;
@@ -68,7 +68,7 @@ namespace dnSpy.MCP.Mcp {
             }
         }
 
-        private async void HandleRequest(HttpListenerContext context) {
+        private async Task HandleRequest(HttpListenerContext context) {
             var response = context.Response;
             response.ContentType = "application/json";
             response.Headers.Add("Access-Control-Allow-Origin", "*");

@@ -92,7 +92,7 @@ namespace dnSpy.MCP.Tools {
             // Atomic swap: build the new body fully before assigning it to the method.
             // This prevents leaving the original method body in a corrupted state on failure.
             method.Body = clonedBody;
-            DnSpyContext.TreeView?.TreeView?.RefreshAllNodes();
+            TreeViewTools.RefreshTreeViewOnUIThread();
             return $"Patched method body: {method.FullName}";
         }
 

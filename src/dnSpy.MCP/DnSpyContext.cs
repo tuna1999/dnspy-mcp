@@ -31,8 +31,11 @@ namespace dnSpy.MCP {
         /// </summary>
         public static IDocumentTabService? TabService {
             get {
-                if (_tabService == null && _serviceLocator != null) {
-                    _tabService = _serviceLocator.TryResolve<IDocumentTabService>();
+                if (_tabService == null) {
+                    lock (_tabServiceLock) {
+                        if (_tabService == null && _serviceLocator != null)
+                            _tabService = _serviceLocator.TryResolve<IDocumentTabService>();
+                    }
                 }
                 return _tabService;
             }
@@ -43,13 +46,18 @@ namespace dnSpy.MCP {
         /// </summary>
         public static IDocumentTreeView? TreeView {
             get {
-                if (_treeView == null && _serviceLocator != null) {
-                    _treeView = _serviceLocator.TryResolve<IDocumentTreeView>();
+                if (_treeView == null) {
+                    lock (_treeViewLock) {
+                        if (_treeView == null && _serviceLocator != null)
+                            _treeView = _serviceLocator.TryResolve<IDocumentTreeView>();
+                    }
                 }
                 return _treeView;
             }
         }
 
+        static readonly object _tabServiceLock = new();
+        static readonly object _treeViewLock = new();
         static IDocumentTreeView? _treeView;
         static IDocumentTabService? _tabService;
 
