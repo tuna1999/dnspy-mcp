@@ -12,13 +12,13 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    if: github.event_name == 'push'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: true
+          fetch-depth: 0
 
       - name: Extract version
         id: version
@@ -27,8 +27,8 @@ jobs:
           $content = Get-Content "src/dnSpy.MCP/Mcp/McpServerHost.cs" -Raw
           if ($content -match '\["version"\]\s*=\s*"(\d+\.\d+\.\d+)"') {
             $version = $Matches[1]
-            Write-Host "version=$version" >> $env:GITHUB_OUTPUT
-            Write-Host "tag=v$version" >> $env:GITHUB_OUTPUT
+            "version=$version" >> $env:GITHUB_OUTPUT
+            "tag=v$version" >> $env:GITHUB_OUTPUT
             Write-Host "Detected version: $version"
           } else {
             Write-Host "##[error]Could not find version in McpServerHost.cs"
@@ -40,16 +40,13 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          try {
-            git fetch --tags
-            if (git tag -l $tag) {
-              Write-Host "Tag $tag already exists. Skipping release."
-              Write-Host "skip=true" >> $env:GITHUB_OUTPUT
-            } else {
-              Write-Host "skip=false" >> $env:GITHUB_OUTPUT
-            }
-          } catch {
-            Write-Host "skip=false" >> $env:GITHUB_OUTPUT
+          git fetch --tags
+          $existing = git tag -l $tag
+          if ($existing) {
+            Write-Host "Tag $tag already exists. Skipping release."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "skip=false" >> $env:GITHUB_OUTPUT
           }
 
       - name: Setup .NET
@@ -106,7 +103,6 @@ jobs:
 
       - name: Generate changelog
         if: steps.check_tag.outputs.skip != 'true'
-        id: changelog
         shell: pwsh
         run: |
           $previousTag = git describe --tags --abbrev=0 HEAD~1 2>$null
@@ -144,7 +140,6 @@ jobs:
           4. Start MCP Server from the Tools menu
           "@
 
-          # Create zip
           Compress-Archive -Path "release-out/*" -DestinationPath "dnSpy.MCP.x.zip" -Force
 
           gh release create $tag "dnSpy.MCP.x.zip" `
