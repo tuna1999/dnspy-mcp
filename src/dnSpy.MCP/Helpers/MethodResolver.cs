@@ -92,6 +92,42 @@ namespace dnSpy.MCP.Helpers {
         }
 
         /// <summary>
+        /// Flexible method resolution: tries hex token, plain token, full name, then fallback short name.
+        /// Returns the first match found.
+        /// </summary>
+        public MethodDef? ResolveMethodFlexible(string identifier) {
+            MethodDef? method = null;
+
+            if (identifier.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
+                var hex = identifier.Substring(2);
+                if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out int token))
+                    method = ResolveMethodByToken(token);
+            }
+            else if (int.TryParse(identifier, out int plainToken)) {
+                method = ResolveMethodByToken(plainToken);
+            }
+
+            if (method == null)
+                method = ResolveMethod(identifier);
+
+            if (method == null) {
+                var name = identifier.Contains('.')
+                    ? identifier.Split('.').Last()
+                    : identifier;
+                foreach (var mod in GetAllModules()) {
+                    foreach (var type in mod.GetTypes()) {
+                        foreach (var m in type.Methods) {
+                            if (UTF8String.Equals(m.Name, name))
+                                return m;
+                        }
+                    }
+                }
+            }
+
+            return method;
+        }
+
+        /// <summary>
         /// Finds types matching a pattern
         /// </summary>
         public IEnumerable<TypeDef> SearchTypes(string pattern, bool caseSensitive = false) {

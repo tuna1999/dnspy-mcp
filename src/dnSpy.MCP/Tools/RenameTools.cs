@@ -55,7 +55,7 @@ namespace dnSpy.MCP.Tools {
             if (dryRun)
                 return $"[DRY RUN] Namespace rename plan ({assembly}):\n{plan}";
 
-            var saveResult = SaveModule(modifiedModule, modifiedDoc);
+            var saveResult = RefreshAfterRename(modifiedModule, modifiedDoc);
             return $"Renamed namespace for {changedCount} types in assembly '{assembly}'.{saveResult}";
         }
 
@@ -111,7 +111,7 @@ namespace dnSpy.MCP.Tools {
                 return $"[DRY RUN] Class rename plan: {oldFullName} => {newFullName}";
 
             target.Name = (UTF8String)newClassName;
-            var saveResult = SaveModule(targetModule, targetDoc);
+            var saveResult = RefreshAfterRename(targetModule, targetDoc);
             return $"Renamed class: {oldFullName} => {newFullName}.{saveResult}";
         }
 
@@ -190,11 +190,11 @@ namespace dnSpy.MCP.Tools {
             if (dryRun)
                 return $"[DRY RUN] Method rename plan:\n{plan}";
 
-            var saveResult = SaveModule(targetModule, targetDoc);
+            var saveResult = RefreshAfterRename(targetModule, targetDoc);
             return $"Renamed {changedCount} methods in '{targetType.FullName}'.{saveResult}";
         }
 
-        private static string SaveModule(ModuleDef? module, IDsDocument? doc) {
+        private static string RefreshAfterRename(ModuleDef? module, IDsDocument? doc) {
             if (module == null)
                 return "";
 

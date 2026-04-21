@@ -1,23 +1,18 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
-using dnSpy.Contracts.Documents;
-using dnSpy.MCP.Helpers;
-using System.ComponentModel;
 
 namespace dnSpy.MCP.Tools {
     public static class AnalysisTools {
         [Description("Get raw IL instructions of a method body. Useful for low-level analysis.")]
         public static string GetMethodIl(string methodFullname) {
-            var documentService = DnSpyContext.DocumentService;
-            if (documentService == null) return "Error: dnSpy services not available.";
+            if (DnSpyContext.DocumentService == null)
+                return "Error: DocumentService not available.";
 
-            var resolver = new MethodResolver(documentService);
-            var method = resolver.ResolveMethod(methodFullname);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullname);
 
             if (method == null) return $"Method not found: {methodFullname}";
             if (method.Body == null) return $"No body: {method.FullName}";
@@ -42,11 +37,10 @@ namespace dnSpy.MCP.Tools {
 
         [Description("Get detailed method signature: parameters, return type, attributes, and flags.")]
         public static string GetMethodSignatures(string methodFullname) {
-            var documentService = DnSpyContext.DocumentService;
-            if (documentService == null) return "Error: dnSpy services not available.";
+            if (DnSpyContext.DocumentService == null)
+                return "Error: DocumentService not available.";
 
-            var resolver = new MethodResolver(documentService);
-            var method = resolver.ResolveMethod(methodFullname);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullname);
 
             if (method == null) return $"Method not found: {methodFullname}";
 
@@ -76,11 +70,10 @@ namespace dnSpy.MCP.Tools {
 
         [Description("Get type hierarchy: base types, implemented interfaces, and inheritance chain.")]
         public static string GetTypeHierarchy(string typeFullname) {
-            var documentService = DnSpyContext.DocumentService;
-            if (documentService == null) return "Error: dnSpy services not available.";
+            if (DnSpyContext.DocumentService == null)
+                return "Error: DocumentService not available.";
 
-            var resolver = new MethodResolver(documentService);
-            var type = resolver.ResolveType(typeFullname);
+            var type = DnSpyContext.Resolver.ResolveType(typeFullname);
 
             if (type == null) return $"Type not found: {typeFullname}";
 
@@ -112,11 +105,10 @@ namespace dnSpy.MCP.Tools {
 
         [Description("Get raw IL bytes of a method body for pattern matching.")]
         public static string GetMethodBody(string methodFullname) {
-            var documentService = DnSpyContext.DocumentService;
-            if (documentService == null) return "Error: dnSpy services not available.";
+            if (DnSpyContext.DocumentService == null)
+                return "Error: DocumentService not available.";
 
-            var resolver = new MethodResolver(documentService);
-            var method = resolver.ResolveMethod(methodFullname);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullname);
 
             if (method == null) return $"Method not found: {methodFullname}";
             if (method.Body == null) return $"No body: {method.FullName}";

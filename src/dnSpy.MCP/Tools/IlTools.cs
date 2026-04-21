@@ -5,11 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnSpy.MCP.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
 
 namespace dnSpy.MCP.Tools {
     /// <summary>Thrown when patch compilation fails with a user-facing error.</summary>
@@ -20,12 +22,10 @@ namespace dnSpy.MCP.Tools {
     public static class IlTools {
         [Description("Returns formatted IL opcodes for a method with line numbers. Input accepts full name, token, or partial method name.")]
         public static string GetIlOpcodesFormatted(string methodFullnameOrToken) {
-            var documentService = DnSpyContext.DocumentService;
-            if (documentService == null)
+            if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
-            var resolver = new MethodResolver(documentService);
-            var method = ResolveMethod(resolver, methodFullnameOrToken);
+            var method = ResolveMethod(DnSpyContext.Resolver, methodFullnameOrToken);
             if (method == null)
                 return $"Method not found: {methodFullnameOrToken}";
 
@@ -59,8 +59,7 @@ namespace dnSpy.MCP.Tools {
             if (string.IsNullOrWhiteSpace(methodBody))
                 return "Error: methodBody is required.";
 
-            var resolver = new MethodResolver(documentService);
-            var method = ResolveMethod(resolver, methodFullnameOrToken);
+            var method = ResolveMethod(DnSpyContext.Resolver, methodFullnameOrToken);
             if (method == null)
                 return $"Method not found: {methodFullnameOrToken}";
 
@@ -97,35 +96,7 @@ namespace dnSpy.MCP.Tools {
         }
 
         private static MethodDef? ResolveMethod(MethodResolver resolver, string methodFullnameOrToken) {
-            MethodDef? method = null;
-
-            if (methodFullnameOrToken.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
-                var hex = methodFullnameOrToken.Substring(2);
-                if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out int token))
-                    method = resolver.ResolveMethodByToken(token);
-            } else if (int.TryParse(methodFullnameOrToken, out int plainToken)) {
-                method = resolver.ResolveMethodByToken(plainToken);
-            }
-
-            if (method == null)
-                method = resolver.ResolveMethod(methodFullnameOrToken);
-
-            if (method == null) {
-                var name = methodFullnameOrToken.Contains('.')
-                    ? methodFullnameOrToken.Split('.').Last()
-                    : methodFullnameOrToken;
-
-                foreach (var mod in resolver.GetAllModules()) {
-                    foreach (var type in mod.GetTypes()) {
-                        foreach (var m in type.Methods) {
-                            if (UTF8String.Equals(m.Name, name))
-                                return m;
-                        }
-                    }
-                }
-            }
-
-            return method;
+            return resolver.ResolveMethodFlexible(methodFullnameOrToken);
         }
 
         // ---------------------------------------------------------------------------
@@ -262,7 +233,11 @@ public static class __Patch {{
             return normalized;
         }
 
-        /// <summary>Loads Roslyn metadata references for runtime patch compilation.</summary>
+        private static readonly string[] s_allowedTpaNames = new[] {
+            "System.Runtime", "netstandard", "System.Private.CoreLib",
+            "System.Collections", "System.Collections.Generic",
+        };
+
         private static List<MetadataReference> BuildRoslynReferences() {
             var refs = new List<MetadataReference>();
             var addedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -275,30 +250,21 @@ public static class __Patch {{
                 refs.Add(MetadataReference.CreateFromFile(path));
             }
 
-            // Prefer full TPA set to avoid missing core references (eg. System.Runtime)
             if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string tpaList) {
                 foreach (var path in tpaList.Split(Path.PathSeparator)) {
-                    TryAdd(path);
+                    var name = Path.GetFileNameWithoutExtension(path);
+                    if (s_allowedTpaNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+                        TryAdd(path);
                 }
             }
 
-            // Fallback/extra anchors for environments where TPA is incomplete
-            var assemblies = new[] {
+            var coreAssemblies = new[] {
                 typeof(object).Assembly,
-                typeof(Console).Assembly,
                 typeof(List<>).Assembly,
-                typeof(Enumerable).Assembly,
-                typeof(File).Assembly,
-                typeof(DescriptionAttribute).Assembly,
             };
 
-            foreach (var asm in assemblies) {
-                try {
-                    TryAdd(asm.Location);
-                }
-                catch {
-                    // Skip assemblies without a file location (dynamic assemblies)
-                }
+            foreach (var asm in coreAssemblies) {
+                try { TryAdd(asm.Location); } catch { }
             }
 
             return refs;
@@ -324,7 +290,13 @@ public static class __Patch {{
 
             var ms = new MemoryStream();
             try {
-                var result = compilation.Emit(ms);
+                EmitResult result;
+                try {
+                    result = Task.Run(() => compilation.Emit(ms)).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                }
+                catch (TimeoutException) {
+                    throw new PatchCompileException("Compilation timed out (10s). Simplify the patch body.");
+                }
                 if (!result.Success) {
                     var errors = string.Join("\n", result.Diagnostics
                         .Where(d => d.Severity == DiagnosticSeverity.Error)

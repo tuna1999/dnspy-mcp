@@ -2,11 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Threading.Tasks;
-using dnSpy.Contracts.App;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Documents;
-using dnSpy.Contracts.Documents.Tabs;
-using dnSpy.Contracts.Documents.TreeView;
 using dnSpy.Contracts.Extension;
 using dnSpy.Contracts.Output;
 using dnSpy.Contracts.Scripting;
@@ -80,7 +77,7 @@ namespace dnSpy.MCP {
                 return;
             }
 
-            _serverHost = new McpServerHost(_options, DocumentService, DecompilerService);
+            _serverHost = new McpServerHost(_options);
             Task.Run(async () => {
                 try {
                     await _serverHost.StartAsync();

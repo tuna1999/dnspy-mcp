@@ -3,15 +3,13 @@ using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using dnlib.DotNet;
-using dnSpy.Contracts.Documents;
-using System.ComponentModel;
 
 namespace dnSpy.MCP.Tools {
     public static class ResourceTools {
         [Description("List all embedded resources in the currently loaded assembly.")]
         public static string GetResources() {
             var documentService = DnSpyContext.DocumentService;
-            if (documentService == null) return "Error: dnSpy services not available.";
+            if (documentService == null) return "Error: DocumentService not available.";
 
             var sb = new StringBuilder();
             var count = 0;
@@ -35,7 +33,7 @@ namespace dnSpy.MCP.Tools {
         [Description("Get raw data of a specific embedded resource by name.")]
         public static string GetResourceData(string resourceName, int maxLength = 512) {
             var documentService = DnSpyContext.DocumentService;
-            if (documentService == null) return "Error: dnSpy services not available.";
+            if (documentService == null) return "Error: DocumentService not available.";
 
             foreach (var doc in documentService.GetDocuments()) {
                 if (doc.ModuleDef is ModuleDef mod) {
@@ -60,7 +58,7 @@ namespace dnSpy.MCP.Tools {
         [Description("Get PE and metadata information: headers, metadata version, strong name, assembly attributes.")]
         public static string GetMetadata() {
             var documentService = DnSpyContext.DocumentService;
-            if (documentService == null) return "Error: dnSpy services not available.";
+            if (documentService == null) return "Error: DocumentService not available.";
 
             foreach (var doc in documentService.GetDocuments()) {
                 if (doc.ModuleDef is ModuleDef mod) {

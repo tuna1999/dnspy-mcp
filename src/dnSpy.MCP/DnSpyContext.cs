@@ -6,6 +6,7 @@ using dnSpy.Contracts.Documents.TreeView;
 using dnSpy.Contracts.Extension;
 using dnSpy.Contracts.Output;
 using dnSpy.Contracts.Scripting;
+using dnSpy.MCP.Helpers;
 using Microsoft.VisualStudio.Composition;
 
 namespace dnSpy.MCP {
@@ -25,6 +26,16 @@ namespace dnSpy.MCP {
         static IServiceLocator? _serviceLocator;
 
         internal static IOutputTextPane? OutputPane => _outputPane;
+
+        const string ServiceUnavailable = "Error: DocumentService not available.";
+
+        internal static IDsDocumentService GetDocumentServiceOrFail() {
+            return DocumentService ?? throw new InvalidOperationException(ServiceUnavailable);
+        }
+
+        private static MethodResolver? _resolver;
+        internal static MethodResolver Resolver =>
+            _resolver ??= new MethodResolver(GetDocumentServiceOrFail());
 
         /// <summary>
         /// Lazily resolves IDocumentTabService via IServiceLocator (safe to call from any thread).
@@ -76,6 +87,7 @@ namespace dnSpy.MCP {
             // Clear cached lazy refs so next access re-resolves
             _tabService = null;
             _treeView = null;
+            _resolver = null;
         }
 
         /// <summary>

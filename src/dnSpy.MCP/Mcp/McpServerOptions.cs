@@ -12,10 +12,5 @@ namespace dnSpy.MCP.Mcp {
         /// Hostname to bind to. Default is localhost (127.0.0.1).
         /// </summary>
         public string Host { get; set; } = "127.0.0.1";
-
-        /// <summary>
-        /// Whether the server is currently running.
-        /// </summary>
-        public bool IsRunning { get; set; }
     }
 }

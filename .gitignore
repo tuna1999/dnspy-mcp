@@ -29,3 +29,8 @@ deps/
 # Editor
 *~
 
+# Added by code-review-graph
+.code-review-graph/
+
+# Claude Code
+.claude/

@@ -6,23 +6,19 @@ using System.Text;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnSpy.Contracts.Documents;
-using dnSpy.MCP.Helpers;
-using System.ComponentModel;
 
 namespace dnSpy.MCP.Tools {
     public static class XrefTools {
         [Description("Find all methods that reference the given method or field.")]
         public static string GetXrefsTo(string memberFullname) {
-            var documentService = DnSpyContext.DocumentService;
-            if (documentService == null)
-                return "Error: dnSpy document service not available.";
+            if (DnSpyContext.DocumentService == null)
+                return "Error: DocumentService not available.";
 
-            var resolver = new MethodResolver(documentService);
             var parts = memberFullname.Split(new[] { "::" }, StringSplitOptions.None);
             var targetName = parts.Length > 1 ? parts[parts.Length - 1] : memberFullname;
             var refs = new List<(TypeDef type, MethodDef caller, Instruction instr)>();
 
-            foreach (var mod in resolver.GetAllModules()) {
+            foreach (var mod in DnSpyContext.Resolver.GetAllModules()) {
                 foreach (var type in mod.GetTypes()) {
                     foreach (var method in type.Methods) {
                         if (method.Body == null) continue;
@@ -52,12 +48,10 @@ namespace dnSpy.MCP.Tools {
 
         [Description("Get all methods/fields called by a method.")]
         public static string GetCallees(string methodFullname) {
-            var documentService = DnSpyContext.DocumentService;
-            if (documentService == null)
-                return "Error: dnSpy document service not available.";
+            if (DnSpyContext.DocumentService == null)
+                return "Error: DocumentService not available.";
 
-            var resolver = new MethodResolver(documentService);
-            var method = resolver.ResolveMethod(methodFullname);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullname);
 
             if (method == null)
                 return $"Method not found: {methodFullname}";

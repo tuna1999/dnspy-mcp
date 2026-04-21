@@ -1,36 +1,26 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using dnSpy.Contracts.Decompiler;
-using dnSpy.Contracts.Documents;
 
 namespace dnSpy.MCP.Mcp {
     public sealed class McpServerHost : IDisposable {
         private HttpListener? _listener;
         private CancellationTokenSource? _cts;
         private readonly McpServerOptions _options;
-        private readonly IDsDocumentService? _documentService;
-        private readonly IDecompilerService? _decompilerService;
         private readonly ToolRegistry _registry;
-        private bool _running;
+        private volatile bool _running;
+        private readonly SemaphoreSlim _concurrency = new(4);
 
         public bool IsRunning => _running;
 
-        public McpServerHost(
-            McpServerOptions options,
-            IDsDocumentService? documentService,
-            IDecompilerService? decompilerService) {
+        public McpServerHost(McpServerOptions options) {
             _options = options;
-            _documentService = documentService;
-            _decompilerService = decompilerService;
             _registry = new ToolRegistry();
         }
 
@@ -42,19 +32,21 @@ namespace dnSpy.MCP.Mcp {
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://127.0.0.1:{_options.Port}/");
             _listener.Start();
-            _running = true;
 
             McpLogger.Info($"Server started on http://127.0.0.1:{_options.Port}/");
             McpLogger.Info($"Registered {(_registry.ListTools().Count)} tools");
+
+            _running = true;
 
             _ = Task.Run(() => ListenAsync(_cts.Token));
         }
 
         private async Task ListenAsync(CancellationToken ct) {
-            while (!ct.IsCancellationRequested && _listener != null && _listener.IsListening) {
+            while (!ct.IsCancellationRequested && _running && _listener != null && _listener.IsListening) {
                 try {
                     var context = await _listener.GetContextAsync().WaitAsync(ct);
-                    _ = HandleRequest(context);
+                    await _concurrency.WaitAsync(ct);
+                    _ = HandleRequest(context).ContinueWith(_ => _concurrency.Release());
                 }
                 catch (OperationCanceledException) {
                     break;
@@ -79,6 +71,12 @@ namespace dnSpy.MCP.Mcp {
                 if (context.Request.HttpMethod == "OPTIONS") {
                     response.StatusCode = 204;
                     response.Close();
+                    return;
+                }
+
+                if (context.Request.ContentLength64 > 1_048_576) {
+                    response.StatusCode = 413;
+                    WriteJson(response, JsonSerializer.Serialize(new { error = "Payload too large (max 1MB)" }));
                     return;
                 }
 
