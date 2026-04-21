@@ -13,7 +13,7 @@ dnSpy loads extension → MCP Server menu → Start → HttpListener on :5150
 
 The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.NET Core or external dependencies required. AI agents connect via standard MCP protocol over HTTP.
 
-## Tools (28)
+## Tools (36)
 
 ### Decompiler
 | Tool | Description |
@@ -57,6 +57,25 @@ The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.
 | Tool | Description |
 |------|-------------|
 | `get_global_namespaces` | List all types in the global namespace |
+
+### Type Inspection
+| Tool | Description |
+|------|-------------|
+| `get_type_members` | List all members of a type with optional filter |
+| `get_fields` | Detailed field info: type, access, static/const, values |
+| `get_properties` | Property details: getter/setter, type, access |
+
+### Custom Attributes
+| Tool | Description |
+|------|-------------|
+| `get_attributes` | Attributes on assembly/type/method/field with filter |
+| `get_method_attributes` | Shortcut: attributes on a specific method |
+
+### Constants & Enums
+| Tool | Description |
+|------|-------------|
+| `get_enum_values` | Enum members with name + value (hex + decimal) |
+| `search_constants` | Search const/literal fields across assemblies |
 
 ### Cross-References
 | Tool | Description |
@@ -177,7 +196,7 @@ dnspy_mcp/
 │       │   ├── ToolRegistry.cs      # Reflection-based tool discovery
 │       │   ├── McpLogger.cs         # Logging: file + Output Window
 │       │   └── McpServerOptions.cs  # Port/host configuration
-│       ├── Tools/                   # 10 tool classes, 28 tools total
+│       ├── Tools/                   # 13 tool classes, 36 tools total
 │       ├── Helpers/
 │       │   ├── MethodResolver.cs    # Resolve methods/types by name/token
 │       │   └── TextDecompilerOutput.cs
@@ -310,7 +329,7 @@ claude mcp remove dnspy  # remove a server
 3. In your AI agent, verify the connection:
 
 ```
-You should see 28 MCP tools available:
+You should see 36 MCP tools available:
 - decompile_method
 - decompile_type
 - search_types
