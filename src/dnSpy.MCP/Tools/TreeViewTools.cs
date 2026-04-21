@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 using dnSpy.Contracts.Documents.TreeView;
@@ -18,7 +19,7 @@ namespace dnSpy.MCP.Tools {
             return dispatcher.Invoke(action, DispatcherPriority.Normal);
         }
 
-        static void RunOnUIThread(Action action) {
+        internal static void RunOnUIThread(Action action) {
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher == null)
                 return;
@@ -92,6 +93,56 @@ namespace dnSpy.MCP.Tools {
             }
             catch (Exception ex) {
                 McpLogger.Error(ex, "RefreshTreeView failed");
+            }
+        }
+
+        internal static void UpdateNamespaceNode(string assembly, string oldNamespace, string newNamespace) {
+            var treeView = DnSpyContext.TreeView;
+            if (treeView == null) {
+                McpLogger.Warn("UpdateNamespaceNode: IDocumentTreeView not resolved");
+                return;
+            }
+
+            try {
+                RunOnUIThread(() => {
+                    var tv = treeView.TreeView;
+                    if (tv == null) return;
+
+                    foreach (var asmTreeNode in tv.Root.Children) {
+                        if (asmTreeNode.Data is not AssemblyDocumentNode asmNode) continue;
+                        if (!string.Equals(asmNode.Document.ModuleDef?.Assembly?.Name?.String, assembly, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        asmTreeNode.EnsureChildrenLoaded();
+                        var modNode = asmTreeNode.DataChildren.OfType<ModuleDocumentNode>().FirstOrDefault();
+                        if (modNode == null) continue;
+
+                        modNode.TreeNode.EnsureChildrenLoaded();
+                        var oldNsNode = modNode.FindNode(oldNamespace);
+                        if (oldNsNode == null) continue;
+
+                        oldNsNode.TreeNode.EnsureChildrenLoaded();
+                        var existingNewNs = modNode.FindNode(newNamespace);
+
+                        if (existingNewNs != null) {
+                            var typeTreeNodes = oldNsNode.TreeNode.Children.ToList();
+                            oldNsNode.TreeNode.Children.Clear();
+                            foreach (var typeTreeNode in typeTreeNodes)
+                                existingNewNs.TreeNode.AddChild(typeTreeNode);
+                            oldNsNode.TreeNode.Parent?.Children.Remove(oldNsNode.TreeNode);
+                            existingNewNs.TreeNode.RefreshUI();
+                        }
+                        else {
+                            oldNsNode.Name = newNamespace;
+                            oldNsNode.TreeNode.RefreshUI();
+                        }
+
+                        DnSpyContext.TabService?.RefreshModifiedDocument(modNode.Document);
+                    }
+                });
+            }
+            catch (Exception ex) {
+                McpLogger.Error(ex, "UpdateNamespaceNode failed");
             }
         }
 

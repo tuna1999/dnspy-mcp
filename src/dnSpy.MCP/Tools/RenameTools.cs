@@ -55,8 +55,9 @@ namespace dnSpy.MCP.Tools {
             if (dryRun)
                 return $"[DRY RUN] Namespace rename plan ({assembly}):\n{plan}";
 
-            var saveResult = RefreshAfterRename(modifiedModule, modifiedDoc, isStructuralChange: true);
-            return $"Renamed namespace for {changedCount} types in assembly '{assembly}'.{saveResult}";
+            TreeViewTools.UpdateNamespaceNode(assembly, oldNamespace, newNamespace);
+            var msg = " (changes applied in-memory. Use dnSpy's File > Save Module to persist to disk.)";
+            return $"Renamed namespace for {changedCount} types in assembly '{assembly}'.{msg}";
         }
 
         [Description("Renames one class (type) in an assembly+namespace. Use dryRun=true (default) to preview first.")]
@@ -194,16 +195,16 @@ namespace dnSpy.MCP.Tools {
             return $"Renamed {changedCount} methods in '{targetType.FullName}'.{saveResult}";
         }
 
-        private static string RefreshAfterRename(ModuleDef? module, IDsDocument? doc, bool isStructuralChange = false) {
+        private static string RefreshAfterRename(ModuleDef? module, IDsDocument? doc) {
             if (module == null)
                 return "";
 
             TreeViewTools.RefreshTreeViewOnUIThread();
 
-            var msg = " (changes applied in-memory. Use dnSpy's File > Save Module to persist to disk.)";
-            if (isStructuralChange)
-                msg += " If tree view doesn't update, collapse and re-expand the assembly node.";
-            return msg;
+            if (doc != null && DnSpyContext.TabService is { } tabSvc)
+                TreeViewTools.RunOnUIThread(() => tabSvc.RefreshModifiedDocument(doc));
+
+            return " (changes applied in-memory. Use dnSpy's File > Save Module to persist to disk.)";
         }
     }
 }
