@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
 using dnSpy.Contracts.Documents.TreeView;
+using dnSpy.MCP.Mcp;
 
 namespace dnSpy.MCP.Tools {
     public static class TreeViewTools {
@@ -73,20 +74,24 @@ namespace dnSpy.MCP.Tools {
 
         /// <summary>
         /// Dispatcher-aware tree refresh for use by rename/patch tools.
-        /// Called on background MCP thread; must marshal to UI thread.
         /// </summary>
         internal static void RefreshTreeViewOnUIThread() {
             var treeView = DnSpyContext.TreeView;
-            if (treeView == null)
+            if (treeView == null) {
+                McpLogger.Warn("RefreshTreeView: IDocumentTreeView not resolved");
                 return;
+            }
 
             try {
                 RunOnUIThread(() => {
-                    treeView.TreeView?.RefreshAllNodes();
+                    var tv = treeView.TreeView;
+                    if (tv == null) return;
+
+                    tv.RefreshAllNodes();
                 });
             }
-            catch {
-                // best-effort
+            catch (Exception ex) {
+                McpLogger.Error(ex, "RefreshTreeView failed");
             }
         }
 

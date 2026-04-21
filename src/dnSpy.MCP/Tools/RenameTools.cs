@@ -55,7 +55,7 @@ namespace dnSpy.MCP.Tools {
             if (dryRun)
                 return $"[DRY RUN] Namespace rename plan ({assembly}):\n{plan}";
 
-            var saveResult = RefreshAfterRename(modifiedModule, modifiedDoc);
+            var saveResult = RefreshAfterRename(modifiedModule, modifiedDoc, isStructuralChange: true);
             return $"Renamed namespace for {changedCount} types in assembly '{assembly}'.{saveResult}";
         }
 
@@ -194,14 +194,16 @@ namespace dnSpy.MCP.Tools {
             return $"Renamed {changedCount} methods in '{targetType.FullName}'.{saveResult}";
         }
 
-        private static string RefreshAfterRename(ModuleDef? module, IDsDocument? doc) {
+        private static string RefreshAfterRename(ModuleDef? module, IDsDocument? doc, bool isStructuralChange = false) {
             if (module == null)
                 return "";
 
-            // Refresh tree view on UI thread after metadata rename.
             TreeViewTools.RefreshTreeViewOnUIThread();
 
-            return " (changes applied in-memory. Use dnSpy's File > Save Module to persist to disk.)";
+            var msg = " (changes applied in-memory. Use dnSpy's File > Save Module to persist to disk.)";
+            if (isStructuralChange)
+                msg += " If tree view doesn't update, collapse and re-expand the assembly node.";
+            return msg;
         }
     }
 }
