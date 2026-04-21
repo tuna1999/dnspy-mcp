@@ -3,8 +3,7 @@ name: Release
 on:
   push:
     branches: [master, main]
-    paths:
-      - 'src/dnSpy.MCP/Mcp/McpServerHost.cs'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -47,6 +46,7 @@ jobs:
             "skip=true" >> $env:GITHUB_OUTPUT
           } else {
             "skip=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Tag $tag does not exist. Will create release."
           }
 
       - name: Setup .NET
