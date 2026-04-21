@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'src/dnSpy.MCP/Mcp/McpServerHost.cs'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $content = Get-Content "src/dnSpy.MCP/Mcp/McpServerHost.cs" -Raw
+          if ($content -match '\["version"\]\s*=\s*"(\d+\.\d+\.\d+)"') {
+            $version = $Matches[1]
+            Write-Host "version=$version" >> $env:GITHUB_OUTPUT
+            Write-Host "tag=v$version" >> $env:GITHUB_OUTPUT
+            Write-Host "Detected version: $version"
+          } else {
+            Write-Host "##[error]Could not find version in McpServerHost.cs"
+            exit 1
+          }
+
+      - name: Check if tag exists
+        id: check_tag
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          try {
+            git fetch --tags
+            if (git tag -l $tag) {
+              Write-Host "Tag $tag already exists. Skipping release."
+              Write-Host "skip=true" >> $env:GITHUB_OUTPUT
+            } else {
+              Write-Host "skip=false" >> $env:GITHUB_OUTPUT
+            }
+          } catch {
+            Write-Host "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Setup .NET
+        if: steps.check_tag.outputs.skip != 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download dnSpy binaries
+        if: steps.check_tag.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "v6.5.1"
+          $repo = "dnSpyEx/dnSpy"
+          $url = "https://api.github.com/repos/$repo/releases/tags/$tag"
+          $headers = @{
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN" }
+          $resp = Invoke-RestMethod -Uri $url -Headers $headers
+          $assets = $resp.assets | Where-Object { $_.name -match "net8\.0.*win.*x64.*\.zip" }
+          if (-not $assets) { $assets = $resp.assets | Where-Object { $_.name -eq "dnSpy-net-win64.zip" } }
+          if (-not $assets) { Write-Host "##[error]No dnSpy zip found"; exit 1 }
+          $asset = $assets[0]
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:TEMP\dnspy.zip"
+          $extractDir = "$env:TEMP\dnspy"
+          if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+          Expand-Archive -Path "$env:TEMP\dnspy.zip" -DestinationPath $extractDir -Force
+          $binDir = Join-Path $extractDir "bin"
+          if (-not (Test-Path $binDir)) {
+            $exePath = Get-ChildItem -Path $extractDir -Recurse -Filter "dnSpy.exe" | Select-Object -First 1
+            $binDir = Split-Path $exePath.FullName -Parent
+          }
+          New-Item -ItemType Directory -Path "deps" -Force | Out-Null
+          @("dnSpy.Contracts.DnSpy.dll","dnSpy.Contracts.Logic.dll","ICSharpCode.Decompiler.dll","dnlib.dll") | ForEach-Object {
+            Copy-Item (Join-Path $binDir $_) "deps/" -Force
+          }
+
+      - name: Build
+        if: steps.check_tag.outputs.skip != 'true'
+        run: dotnet build src/dnSpy.MCP/dnSpy.MCP.csproj -c Release --nologo -v q
+
+      - name: Package release files
+        if: steps.check_tag.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $outDir = "release-out"
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          Copy-Item "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll" $outDir
+          Copy-Item "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.deps.json" $outDir
+
+      - name: Generate changelog
+        if: steps.check_tag.outputs.skip != 'true'
+        id: changelog
+        shell: pwsh
+        run: |
+          $previousTag = git describe --tags --abbrev=0 HEAD~1 2>$null
+          if ($LASTEXITCODE -ne 0 -or -not $previousTag) {
+            $log = git log --oneline -20 --pretty="- %s"
+          } else {
+            $log = git log "$previousTag..HEAD" --oneline --pretty="- %s"
+          }
+          $log | Out-File -FilePath "CHANGELOG.txt" -Encoding utf8
+          Write-Host "Changelog generated ($(($log | Measure-Object).Count) commits)"
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $version = "${{ steps.version.outputs.version }}"
+          $changelog = Get-Content "CHANGELOG.txt" -Raw
+
+          git tag $tag
+          git push origin $tag
+
+          $releaseBody = @"
+          ## dnSpy MCP v$version
+
+          ### Changes
+          $changelog
+
+          ### Installation
+          1. Download ``dnSpy.MCP.x.zip``
+          2. Extract to ``<dnSpy>/bin/Extensions/``
+          3. Restart dnSpy
+          4. Start MCP Server from the Tools menu
+          "@
+
+          # Create zip
+          Compress-Archive -Path "release-out/*" -DestinationPath "dnSpy.MCP.x.zip" -Force
+
+          gh release create $tag "dnSpy.MCP.x.zip" `
+            --title "v$version" `
+            --notes $releaseBody
