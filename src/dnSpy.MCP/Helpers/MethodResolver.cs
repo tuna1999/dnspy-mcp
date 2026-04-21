@@ -40,10 +40,20 @@ namespace dnSpy.MCP.Helpers {
         }
 
         /// <summary>
-        /// Resolves a method by full name (e.g., "Namespace.Class::Method")
+        /// Gets modules filtered by assembly name (case-insensitive), or all if null/empty.
         /// </summary>
-        public MethodDef? ResolveMethod(string fullName) {
-            foreach (var mod in GetAllModules()) {
+        public IEnumerable<ModuleDef> GetModules(string? assemblyName) {
+            var modules = GetAllModules();
+            if (string.IsNullOrEmpty(assemblyName))
+                return modules;
+            return modules.Where(m => string.Equals(m.Assembly?.Name?.String, assemblyName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Resolves a method by full name (e.g., "Namespace.Class::Method"), optionally scoped to an assembly.
+        /// </summary>
+        public MethodDef? ResolveMethod(string fullName, string? assemblyName = null) {
+            foreach (var mod in GetModules(assemblyName)) {
                 foreach (var type in mod.GetTypes()) {
                     foreach (var method in type.Methods) {
                         if (method.FullName == fullName || $"{type.FullName}::{method.Name}" == fullName)
@@ -57,8 +67,8 @@ namespace dnSpy.MCP.Helpers {
         /// <summary>
         /// Resolves a method by metadata token
         /// </summary>
-        public MethodDef? ResolveMethodByToken(int token) {
-            foreach (var mod in GetAllModules()) {
+        public MethodDef? ResolveMethodByToken(int token, string? assemblyName = null) {
+            foreach (var mod in GetModules(assemblyName)) {
                 var resolved = mod.ResolveToken(token);
                 if (resolved is MethodDef method)
                     return method;
@@ -69,8 +79,8 @@ namespace dnSpy.MCP.Helpers {
         /// <summary>
         /// Resolves a type by full name
         /// </summary>
-        public TypeDef? ResolveType(string fullName) {
-            foreach (var mod in GetAllModules()) {
+        public TypeDef? ResolveType(string fullName, string? assemblyName = null) {
+            foreach (var mod in GetModules(assemblyName)) {
                 foreach (var type in mod.GetTypes()) {
                     if (type.FullName == fullName)
                         return type;
@@ -82,8 +92,8 @@ namespace dnSpy.MCP.Helpers {
         /// <summary>
         /// Resolves a type by metadata token
         /// </summary>
-        public TypeDef? ResolveTypeByToken(int token) {
-            foreach (var mod in GetAllModules()) {
+        public TypeDef? ResolveTypeByToken(int token, string? assemblyName = null) {
+            foreach (var mod in GetModules(assemblyName)) {
                 var resolved = mod.ResolveToken(token);
                 if (resolved is TypeDef type)
                     return type;
@@ -95,26 +105,26 @@ namespace dnSpy.MCP.Helpers {
         /// Flexible method resolution: tries hex token, plain token, full name, then fallback short name.
         /// Returns the first match found.
         /// </summary>
-        public MethodDef? ResolveMethodFlexible(string identifier) {
+        public MethodDef? ResolveMethodFlexible(string identifier, string? assemblyName = null) {
             MethodDef? method = null;
 
             if (identifier.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
                 var hex = identifier.Substring(2);
                 if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out int token))
-                    method = ResolveMethodByToken(token);
+                    method = ResolveMethodByToken(token, assemblyName);
             }
             else if (int.TryParse(identifier, out int plainToken)) {
-                method = ResolveMethodByToken(plainToken);
+                method = ResolveMethodByToken(plainToken, assemblyName);
             }
 
             if (method == null)
-                method = ResolveMethod(identifier);
+                method = ResolveMethod(identifier, assemblyName);
 
             if (method == null) {
                 var name = identifier.Contains('.')
                     ? identifier.Split('.').Last()
                     : identifier;
-                foreach (var mod in GetAllModules()) {
+                foreach (var mod in GetModules(assemblyName)) {
                     foreach (var type in mod.GetTypes()) {
                         foreach (var m in type.Methods) {
                             if (UTF8String.Equals(m.Name, name))
@@ -130,9 +140,9 @@ namespace dnSpy.MCP.Helpers {
         /// <summary>
         /// Finds types matching a pattern
         /// </summary>
-        public IEnumerable<TypeDef> SearchTypes(string pattern, bool caseSensitive = false) {
+        public IEnumerable<TypeDef> SearchTypes(string pattern, string? assemblyName = null, bool caseSensitive = false) {
             var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-            foreach (var mod in GetAllModules()) {
+            foreach (var mod in GetModules(assemblyName)) {
                 foreach (var type in mod.GetTypes()) {
                     if (MatchesPattern(type.FullName?.ToString(), pattern, comparison))
                         yield return type;
@@ -143,9 +153,9 @@ namespace dnSpy.MCP.Helpers {
         /// <summary>
         /// Finds methods matching a pattern
         /// </summary>
-        public IEnumerable<MethodDef> SearchMethods(string pattern, string? typeFullName = null, bool caseSensitive = false) {
+        public IEnumerable<MethodDef> SearchMethods(string pattern, string? typeFullName = null, string? assemblyName = null, bool caseSensitive = false) {
             var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-            foreach (var mod in GetAllModules()) {
+            foreach (var mod in GetModules(assemblyName)) {
                 foreach (var type in mod.GetTypes()) {
                     if (typeFullName != null && type.FullName != typeFullName)
                         continue;

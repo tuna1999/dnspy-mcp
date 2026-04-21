@@ -8,14 +8,43 @@ using dnSpy.Contracts.Documents;
 
 namespace dnSpy.MCP.Tools {
     public static class AssemblyTools {
-        [Description("Get overview of the currently loaded assembly. Returns module name, version, entry point, type count, and assembly references.")]
-        public static string AssemblyOverview(
-            [Description("Optional assembly path to load")] string? assemblyPath = null) {
+        [Description("List all binaries currently loaded in dnSpy. Shows filename, assembly name, MVID, type count, and file path.")]
+        public static string ListLoadedAssemblies() {
             var documentService = DnSpyContext.DocumentService;
             if (documentService == null)
                 return "Error: dnSpy document service not available.";
 
-            if (string.IsNullOrEmpty(assemblyPath)) {
+            var docs = documentService.GetDocuments().ToList();
+            if (docs.Count == 0)
+                return "No assemblies loaded.";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"Loaded assemblies ({docs.Count}):\n");
+
+            for (int i = 0; i < docs.Count; i++) {
+                var doc = docs[i];
+                if (doc.ModuleDef is not ModuleDef mod) continue;
+
+                var typeCount = mod.GetTypes().Count();
+                sb.AppendLine($"  [{i}] {mod.Name}");
+                sb.AppendLine($"      Assembly:  {mod.Assembly?.Name?.String ?? "N/A"}");
+                sb.AppendLine($"      MVID:      {mod.Mvid}");
+                sb.AppendLine($"      Types:     {typeCount}");
+                sb.AppendLine($"      Path:      {mod.Location ?? "(in-memory)"}");
+                sb.AppendLine();
+            }
+
+            return sb.ToString();
+        }
+
+        [Description("Get overview of the currently loaded assembly. Returns module name, version, entry point, type count, and assembly references.")]
+        public static string AssemblyOverview(
+            [Description("Optional assembly name to scope to (e.g. 'PVService')")] string? assemblyName = null) {
+            var documentService = DnSpyContext.DocumentService;
+            if (documentService == null)
+                return "Error: dnSpy document service not available.";
+
+            if (string.IsNullOrEmpty(assemblyName)) {
                 foreach (var doc in documentService.GetDocuments()) {
                     if (doc.ModuleDef is ModuleDef mod)
                         return FormatModuleOverview(mod);
@@ -23,7 +52,11 @@ namespace dnSpy.MCP.Tools {
                 return "No assembly loaded. Please open an assembly in dnSpy.";
             }
 
-            return $"Loading from path not yet implemented. Currently loaded:\n{GetCurrentlyLoadedOverview(documentService)}";
+            foreach (var mod in DnSpyContext.Resolver.GetModules(assemblyName)) {
+                return FormatModuleOverview(mod);
+            }
+
+            return $"Assembly '{assemblyName}' not found. Use list_loaded_assemblies to see available assemblies.";
         }
 
         [Description("List all namespaces in the currently loaded assembly.")]

@@ -10,7 +10,7 @@ using dnSpy.Contracts.Documents;
 namespace dnSpy.MCP.Tools {
     public static class XrefTools {
         [Description("Find all methods that reference the given method or field.")]
-        public static string GetXrefsTo(string memberFullname) {
+        public static string GetXrefsTo(string memberFullname, string? assembly = null) {
             if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
@@ -18,7 +18,7 @@ namespace dnSpy.MCP.Tools {
             var targetName = parts.Length > 1 ? parts[parts.Length - 1] : memberFullname;
             var refs = new List<(TypeDef type, MethodDef caller, Instruction instr)>();
 
-            foreach (var mod in DnSpyContext.Resolver.GetAllModules()) {
+            foreach (var mod in DnSpyContext.Resolver.GetModules(assembly)) {
                 foreach (var type in mod.GetTypes()) {
                     foreach (var method in type.Methods) {
                         if (method.Body == null) continue;

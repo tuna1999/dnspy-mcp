@@ -56,39 +56,43 @@ namespace dnSpy.MCP.Tools {
         }
 
         [Description("Get PE and metadata information: headers, metadata version, strong name, assembly attributes.")]
-        public static string GetMetadata() {
+        public static string GetMetadata(string? assembly = null) {
             var documentService = DnSpyContext.DocumentService;
             if (documentService == null) return "Error: DocumentService not available.";
 
             foreach (var doc in documentService.GetDocuments()) {
-                if (doc.ModuleDef is ModuleDef mod) {
-                    var sb = new StringBuilder();
-                    sb.AppendLine($"Module: {mod.Name}");
-                    sb.AppendLine($"MVID: {mod.Mvid}");
-                    sb.AppendLine($"Runtime: {mod.RuntimeVersion}");
+                if (doc.ModuleDef is not ModuleDef mod) continue;
 
-                    var asm = mod.Assembly;
-                    if (asm != null) {
-                        sb.AppendLine($"Assembly: {asm.Name}");
-                        sb.AppendLine($"Version: {asm.Version}");
-                        sb.AppendLine($"Culture: {asm.Culture}");
-                    }
+                if (!string.IsNullOrEmpty(assembly) &&
+                    !string.Equals(mod.Assembly?.Name?.String, assembly, StringComparison.OrdinalIgnoreCase))
+                    continue;
 
-                    if (mod.EntryPoint != null)
-                        sb.AppendLine($"EntryPoint: {mod.EntryPoint.DeclaringType?.FullName}::{mod.EntryPoint.Name}");
+                var sb = new StringBuilder();
+                sb.AppendLine($"Module: {mod.Name}");
+                sb.AppendLine($"MVID: {mod.Mvid}");
+                sb.AppendLine($"Runtime: {mod.RuntimeVersion}");
 
-                    if (doc.PEImage != null) {
-                        var pe = doc.PEImage;
-                        sb.AppendLine($"Machine: {pe.ImageNTHeaders?.FileHeader.Machine}");
-                        if (pe.ImageSectionHeaders != null) {
-                            sb.AppendLine("Sections:");
-                            foreach (var s in pe.ImageSectionHeaders)
-                                sb.AppendLine($"  {s.DisplayName}: VirtSize={s.VirtualSize}, RawSize={s.SizeOfRawData}");
-                        }
-                    }
-
-                    return sb.ToString();
+                var asm = mod.Assembly;
+                if (asm != null) {
+                    sb.AppendLine($"Assembly: {asm.Name}");
+                    sb.AppendLine($"Version: {asm.Version}");
+                    sb.AppendLine($"Culture: {asm.Culture}");
                 }
+
+                if (mod.EntryPoint != null)
+                    sb.AppendLine($"EntryPoint: {mod.EntryPoint.DeclaringType?.FullName}::{mod.EntryPoint.Name}");
+
+                if (doc.PEImage != null) {
+                    var pe = doc.PEImage;
+                    sb.AppendLine($"Machine: {pe.ImageNTHeaders?.FileHeader.Machine}");
+                    if (pe.ImageSectionHeaders != null) {
+                        sb.AppendLine("Sections:");
+                        foreach (var s in pe.ImageSectionHeaders)
+                            sb.AppendLine($"  {s.DisplayName}: VirtSize={s.VirtualSize}, RawSize={s.SizeOfRawData}");
+                    }
+                }
+
+                return sb.ToString();
             }
 
             return "No assembly loaded.";

@@ -10,11 +10,11 @@ using dnSpy.Contracts.Documents;
 namespace dnSpy.MCP.Tools {
     public static class SearchTools {
         [Description("Search for types by name pattern. Use 'regex:' prefix for regex.")]
-        public static string SearchTypes(string pattern, string? namespaceFilter = null) {
+        public static string SearchTypes(string pattern, string? namespaceFilter = null, string? assembly = null) {
             if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
-            var types = DnSpyContext.Resolver.SearchTypes(pattern).ToList();
+            var types = DnSpyContext.Resolver.SearchTypes(pattern, assembly).ToList();
 
             if (!string.IsNullOrEmpty(namespaceFilter))
                 types = types.Where(t => !UTF8String.IsNullOrEmpty(t.Namespace) && UTF8String.ToSystemStringOrEmpty(t.Namespace).IndexOf(namespaceFilter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
@@ -31,11 +31,11 @@ namespace dnSpy.MCP.Tools {
         }
 
         [Description("Search for methods by name pattern. Use 'regex:' prefix for regex.")]
-        public static string SearchMethods(string pattern, string? typeFullName = null) {
+        public static string SearchMethods(string pattern, string? typeFullName = null, string? assembly = null) {
             if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
-            var methods = DnSpyContext.Resolver.SearchMethods(pattern, typeFullName).ToList();
+            var methods = DnSpyContext.Resolver.SearchMethods(pattern, typeFullName, assembly).ToList();
 
             if (methods.Count == 0)
                 return $"No methods matching '{pattern}'.";
@@ -49,11 +49,11 @@ namespace dnSpy.MCP.Tools {
         }
 
         [Description("Search for string literals in the assembly.")]
-        public static string SearchStrings(string? pattern = null, int minLength = 4) {
+        public static string SearchStrings(string? pattern = null, int minLength = 4, string? assembly = null) {
             if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
-            var strings = CollectStringLiterals(pattern, minLength);
+            var strings = CollectStringLiterals(pattern, minLength, assembly);
 
             if (strings.Count == 0)
                 return pattern != null
@@ -69,7 +69,7 @@ namespace dnSpy.MCP.Tools {
         }
 
         [Description("Grep across types, methods, and strings.")]
-        public static string Grep(string pattern, string scope = "all") {
+        public static string Grep(string pattern, string scope = "all", string? assembly = null) {
             if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
@@ -77,7 +77,7 @@ namespace dnSpy.MCP.Tools {
             var total = 0;
 
             if (scope == "all" || scope == "types") {
-                var types = DnSpyContext.Resolver.SearchTypes(pattern).ToList();
+                var types = DnSpyContext.Resolver.SearchTypes(pattern, assembly).ToList();
                 if (types.Count > 0) {
                     sb.AppendLine($"Types ({types.Count}):");
                     foreach (var t in types.Take(50)) sb.AppendLine($"  {t.FullName}");
@@ -87,7 +87,7 @@ namespace dnSpy.MCP.Tools {
             }
 
             if (scope == "all" || scope == "methods") {
-                var methods = DnSpyContext.Resolver.SearchMethods(pattern).ToList();
+                var methods = DnSpyContext.Resolver.SearchMethods(pattern, null, assembly).ToList();
                 if (methods.Count > 0) {
                     sb.AppendLine($"Methods ({methods.Count}):");
                     foreach (var m in methods.Take(50)) sb.AppendLine($"  {m.DeclaringType?.FullName}::{m.Name}");
@@ -97,7 +97,7 @@ namespace dnSpy.MCP.Tools {
             }
 
             if (scope == "all" || scope == "strings") {
-                var strings = CollectStringLiterals(pattern, 0);
+                var strings = CollectStringLiterals(pattern, 0, assembly);
                 if (strings.Count > 0) {
                     sb.AppendLine($"Strings ({strings.Count}):");
                     foreach (var s in strings.Take(50)) sb.AppendLine($"  \"{s}\"");
@@ -111,18 +111,16 @@ namespace dnSpy.MCP.Tools {
                 : $"Results for '{pattern}': {total} total\n\n{sb}";
         }
 
-        private static List<string> CollectStringLiterals(string? pattern, int minLength) {
+        private static List<string> CollectStringLiterals(string? pattern, int minLength, string? assembly = null) {
             var strings = new List<string>();
-            foreach (var doc in DnSpyContext.DocumentService!.GetDocuments()) {
-                if (doc.ModuleDef is ModuleDef mod) {
-                    foreach (var type in mod.GetTypes()) {
-                        foreach (var method in type.Methods) {
-                            if (method.Body == null) continue;
-                            foreach (var instr in method.Body.Instructions) {
-                                if (instr.OpCode == OpCodes.Ldstr && instr.Operand is string str && str.Length >= minLength) {
-                                    if (pattern == null || str.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0)
-                                        strings.Add(str);
-                                }
+            foreach (var mod in DnSpyContext.Resolver.GetModules(assembly)) {
+                foreach (var type in mod.GetTypes()) {
+                    foreach (var method in type.Methods) {
+                        if (method.Body == null) continue;
+                        foreach (var instr in method.Body.Instructions) {
+                            if (instr.OpCode == OpCodes.Ldstr && instr.Operand is string str && str.Length >= minLength) {
+                                if (pattern == null || str.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0)
+                                    strings.Add(str);
                             }
                         }
                     }

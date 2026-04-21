@@ -45,7 +45,7 @@ dnspy_mcp/
 │   │   ├── ToolRegistry.cs   # Reflection-based tool discovery
 │   │   ├── McpLogger.cs     # File + Output Window logging
 │   │   └── McpServerOptions.cs
-│   ├── Tools/                # 10 tool classes, 28 tools
+│   ├── Tools/                # 13 tool classes, 35 tools
 │   └── Helpers/
 │       ├── MethodResolver.cs
 │       └── TextDecompilerOutput.cs
@@ -104,6 +104,12 @@ All method-accepting tools use `MethodResolver.ResolveMethodFlexible(string iden
 
 Do NOT duplicate this logic — call `DnSpyContext.Resolver.ResolveMethodFlexible()`.
 
+### Assembly Scoping
+dnSpy can open multiple binaries simultaneously. To avoid ambiguous results:
+- **`list_loaded_assemblies`** — always call first to know which binaries are loaded.
+- **`assembly` parameter** — search tools (`search_types`, `search_methods`, `search_strings`, `grep`, `search_constants`, `get_xrefs_to`) accept an optional `assembly` parameter to scope results to a specific binary. When omitted, all loaded assemblies are searched.
+- **Resolve tools** (`decompile_*`, `get_type_members`, `get_fields`, `get_properties`, `get_attributes`, `get_enum_values`) resolve by name across all assemblies — use `list_loaded_assemblies` first to verify context if multiple binaries are loaded.
+
 ### Server Hardening
 `McpServerHost` has these protections:
 - **Request body limit**: 1MB max (`ContentLength64` check)
@@ -136,7 +142,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
           → decompilerService.Decompiler.Decompile(method, output, new DecompilationContext())
 ```
 
-## Available MCP Tools (28)
+## Available MCP Tools (35)
 
 ### Decompiler
 | Tool | Description |
@@ -172,6 +178,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 ### Assembly
 | Tool | Description |
 |------|-------------|
+| `list_loaded_assemblies` | List all binaries loaded in dnSpy |
 | `assembly_overview` | Module/assembly summary, type counts |
 | `assembly_list_namespaces` | All namespaces in loaded assembly |
 | `assembly_list_types` | All types (optional regex filter) |
@@ -184,6 +191,25 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 | `get_resource_data` | Raw bytes of a named resource |
 | `get_metadata` | PE headers, MVID, runtime version |
 | `get_global_namespaces` | Types in the global namespace |
+
+### Type Inspection
+| Tool | Description |
+|------|-------------|
+| `get_type_members` | List all members of a type with optional filter |
+| `get_fields` | Detailed field info: type, access, static/const, values |
+| `get_properties` | Property details: getter/setter, type, access |
+
+### Custom Attributes
+| Tool | Description |
+|------|-------------|
+| `get_attributes` | Attributes on assembly/type/method/field with filter |
+| `get_method_attributes` | Shortcut: attributes on a specific method |
+
+### Constants & Enums
+| Tool | Description |
+|------|-------------|
+| `get_enum_values` | Enum members with name + value (hex + decimal) |
+| `search_constants` | Search const/literal fields across assemblies |
 
 ### UI & Rename
 | Tool | Description |
