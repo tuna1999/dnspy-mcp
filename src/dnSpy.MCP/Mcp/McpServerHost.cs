@@ -368,7 +368,7 @@ namespace dnSpy.MCP.Mcp
                 ["serverInfo"] = new JsonObject
                 {
                     ["name"] = "dnSpy-MCP",
-                    ["version"] = "1.2.0"
+                    ["version"] = "1.3.0"
                 }
             };
         }
