@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -13,7 +14,7 @@ namespace dnSpy.MCP.Mcp
 {
     public sealed class McpServerHost : IDisposable
     {
-        private HttpListener? _listener;
+        private TcpListener? _listener;
         private CancellationTokenSource? _cts;
         private readonly McpSettings _settings;
         private readonly ToolRegistry _registry;
@@ -35,20 +36,14 @@ namespace dnSpy.MCP.Mcp
 
             _cts = new CancellationTokenSource();
 
-            var listenHost = _settings.Host is "0.0.0.0" or "*" ? "+" : _settings.Host;
-            var prefix = $"http://{listenHost}:{_settings.Port}/";
+            var ipAddress = _settings.Host switch {
+                "0.0.0.0" or "*" => IPAddress.Any,
+                "127.0.0.1" or "localhost" => IPAddress.Loopback,
+                _ => IPAddress.Parse(_settings.Host)
+            };
 
-            _listener = new HttpListener();
-            _listener.Prefixes.Add(prefix);
-            try {
-                _listener.Start();
-            }
-            catch (HttpListenerException ex) when (listenHost == "+") {
-                throw new InvalidOperationException(
-                    $"Cannot bind to {prefix}. Run as admin or execute:\n" +
-                    $"  netsh http add urlacl url={prefix} user=Everyone",
-                    ex);
-            }
+            _listener = new TcpListener(ipAddress, _settings.Port);
+            _listener.Start();
 
             McpLogger.Info($"Server started on http://{_settings.Host}:{_settings.Port}/");
             McpLogger.Info($"Registered {(_registry.ListTools().Count)} tools");
@@ -60,77 +55,99 @@ namespace dnSpy.MCP.Mcp
 
         private async Task ListenAsync(CancellationToken ct)
         {
-            while (!ct.IsCancellationRequested && _running && _listener != null && _listener.IsListening)
+            while (!ct.IsCancellationRequested && _running)
             {
                 try
                 {
-                    var context = await _listener.GetContextAsync().WaitAsync(ct);
+                    var client = await _listener!.AcceptTcpClientAsync().WaitAsync(ct);
                     await _concurrency.WaitAsync(ct);
-                    _ = HandleRequest(context).ContinueWith(_ => _concurrency.Release());
+                    _ = HandleConnection(client).ContinueWith(_ => {
+                        _concurrency.Release();
+                        client.Dispose();
+                    });
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (HttpListenerException)
-                {
-                    break;
-                }
-                catch (ObjectDisposedException)
-                {
-                    break;
-                }
+                catch (OperationCanceledException) { break; }
+                catch (SocketException) { break; }
+                catch (ObjectDisposedException) { break; }
             }
         }
 
-        private async Task HandleRequest(HttpListenerContext context)
+        private async Task HandleConnection(TcpClient client)
         {
-            var response = context.Response;
-            response.ContentType = "application/json";
-            response.Headers.Add("Access-Control-Allow-Origin", _settings.AllowedOrigins);
-            response.Headers.Add("Access-Control-Allow-Methods", "POST, OPTIONS");
-            response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
-
             try
             {
-                if (context.Request.HttpMethod == "OPTIONS")
+                using var stream = client.GetStream();
+                stream.ReadTimeout = 30_000;
+                stream.WriteTimeout = 30_000;
+
+                // Read request line: "POST / HTTP/1.1\r\n"
+                var requestLine = await ReadLineAsync(stream);
+                if (requestLine == null) return;
+
+                var spaceIdx = requestLine.IndexOf(' ');
+                if (spaceIdx < 0) return;
+                var method = requestLine.Substring(0, spaceIdx);
+
+                // Read headers
+                var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                string? headerLine;
+                while ((headerLine = await ReadLineAsync(stream)) != null && headerLine.Length > 0)
                 {
-                    response.StatusCode = 204;
-                    response.Close();
+                    var colonIdx = headerLine.IndexOf(':');
+                    if (colonIdx > 0)
+                        headers[headerLine.Substring(0, colonIdx).Trim()] = headerLine.Substring(colonIdx + 1).Trim();
+                }
+
+                // CORS preflight
+                if (method == "OPTIONS")
+                {
+                    await WriteResponseAsync(stream, 204, "No Content", null,
+                        ("Access-Control-Allow-Origin", _settings.AllowedOrigins),
+                        ("Access-Control-Allow-Methods", "POST, OPTIONS"),
+                        ("Access-Control-Allow-Headers", "Content-Type"));
                     return;
                 }
 
-                var maxBytes = (long)_settings.MaxRequestSizeMB * 1024 * 1024;
-                if (context.Request.ContentLength64 > maxBytes)
-                {
-                    response.StatusCode = 413;
-                    WriteJson(response, JsonSerializer.Serialize(new { error = $"Payload too large (max {_settings.MaxRequestSizeMB}MB)" }));
-                    return;
-                }
-
+                // Auth check
                 if (_settings.RequireAuth && !string.IsNullOrEmpty(_settings.ApiToken))
                 {
-                    var auth = context.Request.Headers["Authorization"];
+                    headers.TryGetValue("Authorization", out var auth);
                     if (auth != $"Bearer {_settings.ApiToken}")
                     {
-                        response.StatusCode = 401;
-                        WriteJson(response, JsonSerializer.Serialize(new { error = "Unauthorized" }));
+                        await WriteJsonResponseAsync(stream, 401, new { error = "Unauthorized" });
                         return;
                     }
                 }
 
-                if (context.Request.HttpMethod != "POST")
+                // Size check
+                var contentLength = headers.TryGetValue("Content-Length", out var clStr) && int.TryParse(clStr, out var cl) ? cl : 0;
+                var maxBytes = (long)_settings.MaxRequestSizeMB * 1024 * 1024;
+                if (contentLength > maxBytes)
                 {
-                    response.StatusCode = 405;
-                    WriteJson(response, JsonSerializer.Serialize(new { error = "Method not allowed" }));
+                    await WriteJsonResponseAsync(stream, 413, new { error = $"Payload too large (max {_settings.MaxRequestSizeMB}MB)" });
                     return;
                 }
 
-                string body;
-                using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
-                    body = await reader.ReadToEndAsync();
+                if (method != "POST")
+                {
+                    await WriteJsonResponseAsync(stream, 405, new { error = "Method not allowed" });
+                    return;
+                }
 
-                // Handle JSON-RPC batch and single requests
+                // Read body
+                string body;
+                if (contentLength > 0)
+                {
+                    var buffer = new byte[contentLength];
+                    await stream.ReadExactlyAsync(buffer, 0, contentLength);
+                    body = Encoding.UTF8.GetString(buffer);
+                }
+                else
+                {
+                    body = string.Empty;
+                }
+
+                // Process JSON-RPC
                 var results = new List<JsonNode?>();
 
                 JsonNode? requestNode;
@@ -140,7 +157,7 @@ namespace dnSpy.MCP.Mcp
                 }
                 catch
                 {
-                    WriteError(response, -32700, "Parse error");
+                    await WriteJsonResponseAsync(stream, 200, MakeError(null, -32700, "Parse error"));
                     return;
                 }
 
@@ -165,8 +182,8 @@ namespace dnSpy.MCP.Mcp
                         continue;
                     }
 
-                    var method = req["method"]?.GetValue<string>();
-                    if (string.IsNullOrEmpty(method))
+                    var rpcMethod = req["method"]?.GetValue<string>();
+                    if (string.IsNullOrEmpty(rpcMethod))
                     {
                         results.Add(MakeError(req["id"], -32600, "Invalid Request"));
                         continue;
@@ -175,13 +192,12 @@ namespace dnSpy.MCP.Mcp
                     var id = req["id"];
                     var isNotification = id == null;
 
-                    if (method == "initialize")
+                    if (rpcMethod == "initialize")
                     {
                         McpLogger.Info("Client initialized");
-                        var result = CreateServerCapabilities();
-                        results.Add(isNotification ? null : CreateResponse(id, result));
+                        results.Add(isNotification ? null : CreateResponse(id, CreateServerCapabilities()));
                     }
-                    else if (method == "tools/list")
+                    else if (rpcMethod == "tools/list")
                     {
                         McpLogger.Info("Client requested tool list");
                         var tools = _registry.ListTools();
@@ -191,57 +207,114 @@ namespace dnSpy.MCP.Mcp
                         };
                         results.Add(isNotification ? null : CreateResponse(id, result));
                     }
-                    else if (method == "tools/call")
+                    else if (rpcMethod == "tools/call")
                     {
                         var toolName = req["params"]?["name"]?.GetValue<string>() ?? "";
                         McpLogger.Info($"Tool call: {toolName}");
                         var callResult = HandleToolCall(req);
-                        // HandleToolCall returns the full JSON-RPC response object
                         results.Add(isNotification ? null : callResult);
                     }
-                    else if (method == "notifications/initialized" || method == "shutdown")
+                    else if (rpcMethod == "notifications/initialized" || rpcMethod == "shutdown")
                     {
                         results.Add(isNotification ? null : CreateResponse(id, new JsonObject()));
                     }
                     else
                     {
-                        McpLogger.Warn($"Unknown method: {method}");
-                        results.Add(isNotification ? null : MakeError(id, -32601, $"Method not found: {method}"));
+                        McpLogger.Warn($"Unknown method: {rpcMethod}");
+                        results.Add(isNotification ? null : MakeError(id, -32601, $"Method not found: {rpcMethod}"));
                     }
                 }
 
-                if (context.Request.HttpMethod == "POST")
+                JsonNode? responseBody;
+                if (results.Count == 1)
                 {
-                    JsonNode? responseBody;
-                    if (results.Count == 1)
-                    {
-                        responseBody = results[0];
-                    }
-                    else
-                    {
-                        var batch = new JsonArray();
-                        foreach (var r in results)
-                            batch.Add(r);
-                        responseBody = batch;
-                    }
+                    responseBody = results[0];
+                }
+                else
+                {
+                    var batch = new JsonArray();
+                    foreach (var r in results)
+                        batch.Add(r);
+                    responseBody = batch;
+                }
 
-                    if (responseBody == null)
-                    {
-                        response.StatusCode = 204;
-                        response.Close();
-                    }
-                    else
-                    {
-                        WriteJson(response, responseBody.ToJsonString());
-                    }
+                if (responseBody == null)
+                {
+                    await WriteResponseAsync(stream, 204, "No Content", null);
+                }
+                else
+                {
+                    await WriteJsonResponseAsync(stream, 200, responseBody);
                 }
             }
             catch (Exception ex)
             {
-                McpLogger.Error(ex, "Request handler error");
-                try { WriteError(response, -32603, $"Internal error: {ex.Message}"); } catch { }
+                McpLogger.Error(ex, "Connection handler error");
             }
         }
+
+        private static async Task<string?> ReadLineAsync(Stream stream)
+        {
+            var sb = new StringBuilder();
+            while (true)
+            {
+                var b = stream.ReadByte();
+                if (b == -1) return sb.Length > 0 ? sb.ToString() : null;
+                if (b == '\r')
+                {
+                    var next = stream.ReadByte();
+                    // consume \n after \r
+                    _ = next;
+                    break;
+                }
+                if (b == '\n') break;
+                sb.Append((char)b);
+            }
+            return sb.ToString();
+        }
+
+        private async Task WriteJsonResponseAsync(Stream stream, int statusCode, object data)
+        {
+            var json = data is JsonNode node ? node.ToJsonString() : JsonSerializer.Serialize(data);
+            var body = Encoding.UTF8.GetBytes(json);
+
+            var sb = new StringBuilder();
+            sb.Append($"HTTP/1.1 {statusCode} {GetReasonPhrase(statusCode)}\r\n");
+            sb.Append("Content-Type: application/json\r\n");
+            sb.Append($"Content-Length: {body.Length}\r\n");
+            sb.Append($"Access-Control-Allow-Origin: {_settings.AllowedOrigins}\r\n");
+            sb.Append("\r\n");
+
+            var header = Encoding.UTF8.GetBytes(sb.ToString());
+            await stream.WriteAsync(header, 0, header.Length);
+            await stream.WriteAsync(body, 0, body.Length);
+        }
+
+        private static async Task WriteResponseAsync(Stream stream, int statusCode, string reason, byte[]? body, params (string name, string value)[] headers)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"HTTP/1.1 {statusCode} {reason}\r\n");
+            if (body != null)
+                sb.Append($"Content-Length: {body.Length}\r\n");
+            foreach (var (name, value) in headers)
+                sb.Append($"{name}: {value}\r\n");
+            sb.Append("\r\n");
+
+            var header = Encoding.UTF8.GetBytes(sb.ToString());
+            await stream.WriteAsync(header, 0, header.Length);
+            if (body != null)
+                await stream.WriteAsync(body, 0, body.Length);
+        }
+
+        private static string GetReasonPhrase(int code) => code switch
+        {
+            200 => "OK",
+            204 => "No Content",
+            401 => "Unauthorized",
+            405 => "Method Not Allowed",
+            413 => "Payload Too Large",
+            _ => "Unknown"
+        };
 
         private JsonNode HandleToolCall(JsonNode request)
         {
@@ -262,12 +335,14 @@ namespace dnSpy.MCP.Mcp
             try
             {
                 var result = tool.Invoke(arguments);
-                var content = new JsonArray();
-                content.Add(new JsonObject
+                var content = new JsonArray
                 {
-                    ["type"] = "text",
-                    ["text"] = result
-                });
+                    new JsonObject
+                    {
+                        ["type"] = "text",
+                        ["text"] = result
+                    }
+                };
 
                 return CreateResponse(request["id"], new JsonObject
                 {
@@ -326,28 +401,12 @@ namespace dnSpy.MCP.Mcp
             return response;
         }
 
-        private static void WriteJson(HttpListenerResponse response, string json)
-        {
-            var buffer = Encoding.UTF8.GetBytes(json);
-            response.ContentLength64 = buffer.Length;
-            response.OutputStream.Write(buffer, 0, buffer.Length);
-            response.Close();
-        }
-
-        private static void WriteError(HttpListenerResponse response, int code, string message)
-        {
-            response.StatusCode = 200;
-            var err = MakeError(null, code, message);
-            WriteJson(response, err.ToJsonString());
-        }
-
         public void Stop()
         {
             if (!_running) return;
 
             _cts?.Cancel();
             _listener?.Stop();
-            _listener?.Close();
             _listener = null;
             _running = false;
             McpLogger.Info("Server stopped");
