@@ -5,13 +5,21 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+env:
+  DNSPY_TAG: 'v6.5.1'
+  DNSPY_REPO: 'dnSpyEx/dnSpy'
+
 permissions:
   contents: write
 
 jobs:
-  release:
+  # ── Detect version & skip check ──────────────────────────────────
+  prepare:
     runs-on: windows-latest
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      skip: ${{ steps.check_tag.outputs.skip }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,51 +57,88 @@ jobs:
             Write-Host "Tag $tag does not exist. Will create release."
           }
 
+  # ── Build for both architectures ─────────────────────────────────
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            asset_pattern: 'net8\.0.*win.*x64.*\.zip'
+            asset_fallback: 'dnSpy-net-win64.zip'
+          - arch: x86
+            asset_pattern: 'net8\.0.*win.*x86.*\.zip'
+            asset_fallback: 'dnSpy-net-win32.zip'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Setup .NET
-        if: steps.check_tag.outputs.skip != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Download dnSpy binaries
-        if: steps.check_tag.outputs.skip != 'true'
+      - name: Download dnSpy binaries (${{ matrix.arch }})
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $tag = "v6.5.1"
-          $repo = "dnSpyEx/dnSpy"
-          $url = "https://api.github.com/repos/$repo/releases/tags/$tag"
+          $url = "https://api.github.com/repos/${{ env.DNSPY_REPO }}/releases/tags/${{ env.DNSPY_TAG }}"
           $headers = @{
             Accept = "application/vnd.github+json"
             "X-GitHub-Api-Version" = "2022-11-28"
           }
           if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN" }
+
           $resp = Invoke-RestMethod -Uri $url -Headers $headers
-          $assets = $resp.assets | Where-Object { $_.name -match "net8\.0.*win.*x64.*\.zip" }
-          if (-not $assets) { $assets = $resp.assets | Where-Object { $_.name -eq "dnSpy-net-win64.zip" } }
-          if (-not $assets) { Write-Host "##[error]No dnSpy zip found"; exit 1 }
+          $pattern = '${{ matrix.asset_pattern }}'
+          $assets = $resp.assets | Where-Object { $_.name -match $pattern }
+
+          if (-not $assets) {
+            $fallback = '${{ matrix.asset_fallback }}'
+            Write-Host "Trying fallback: $fallback..."
+            $assets = $resp.assets | Where-Object { $_.name -eq $fallback }
+          }
+
+          if (-not $assets) {
+            Write-Host "Available assets:"
+            $resp.assets | ForEach-Object { Write-Host "  $($_.name)" }
+            Write-Host "##[error]No suitable dnSpy zip found for ${{ matrix.arch }}."
+            exit 1
+          }
+
           $asset = $assets[0]
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:TEMP\dnspy.zip"
+          Write-Host "Downloading: $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:TEMP\dnspy.zip" -ErrorAction Stop
+
           $extractDir = "$env:TEMP\dnspy"
           if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
           New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
           Expand-Archive -Path "$env:TEMP\dnspy.zip" -DestinationPath $extractDir -Force
+
           $binDir = Join-Path $extractDir "bin"
           if (-not (Test-Path $binDir)) {
             $exePath = Get-ChildItem -Path $extractDir -Recurse -Filter "dnSpy.exe" | Select-Object -First 1
+            if (-not $exePath) {
+              Write-Host "##[error]Could not find dnSpy.exe in extracted archive."
+              exit 1
+            }
             $binDir = Split-Path $exePath.FullName -Parent
           }
+
           New-Item -ItemType Directory -Path "deps" -Force | Out-Null
           @("dnSpy.Contracts.DnSpy.dll","dnSpy.Contracts.Logic.dll","ICSharpCode.Decompiler.dll","dnlib.dll") | ForEach-Object {
             Copy-Item (Join-Path $binDir $_) "deps/" -Force
           }
+          Write-Host "deps/ ready (${{ matrix.arch }})"
 
       - name: Build
-        if: steps.check_tag.outputs.skip != 'true'
         run: dotnet build src/dnSpy.MCP/dnSpy.MCP.csproj -c Release --nologo -v q
 
-      - name: Package release files
-        if: steps.check_tag.outputs.skip != 'true'
+      - name: Package
         shell: pwsh
         run: |
           $outDir = "release-out"
@@ -101,8 +146,42 @@ jobs:
           Copy-Item "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll" $outDir
           Copy-Item "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.deps.json" $outDir
 
+          Compress-Archive -Path "$outDir/*" -DestinationPath "dnSpy.MCP.x-${{ matrix.arch }}.zip" -Force
+          Write-Host "Packaged: dnSpy.MCP.x-${{ matrix.arch }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.arch }}
+          path: dnSpy.MCP.x-${{ matrix.arch }}.zip
+          retention-days: 1
+
+  # ── Create GitHub Release with both zips ─────────────────────────
+  release:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Download x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-x64
+          path: ./artifacts
+
+      - name: Download x86 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-x86
+          path: ./artifacts
+
       - name: Generate changelog
-        if: steps.check_tag.outputs.skip != 'true'
         shell: pwsh
         run: |
           $previousTag = git describe --tags --abbrev=0 HEAD~1 2>$null
@@ -115,13 +194,12 @@ jobs:
           Write-Host "Changelog generated ($(($log | Measure-Object).Count) commits)"
 
       - name: Create GitHub Release
-        if: steps.check_tag.outputs.skip != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "${{ steps.version.outputs.tag }}"
-          $version = "${{ steps.version.outputs.version }}"
+          $tag = "${{ needs.prepare.outputs.tag }}"
+          $version = "${{ needs.prepare.outputs.version }}"
           $changelog = Get-Content "CHANGELOG.txt" -Raw
 
           git tag $tag
@@ -134,14 +212,16 @@ jobs:
           $changelog
 
           ### Installation
-          1. Download ``dnSpy.MCP.x.zip``
+          1. Download the zip matching your dnSpy version:
+             - ``dnSpy.MCP.x-x64.zip`` for dnSpy **64-bit**
+             - ``dnSpy.MCP.x-x86.zip`` for dnSpy **32-bit**
           2. Extract to ``<dnSpy>/bin/Extensions/``
           3. Restart dnSpy
           4. Start MCP Server from the Tools menu
           "@
 
-          Compress-Archive -Path "release-out/*" -DestinationPath "dnSpy.MCP.x.zip" -Force
-
-          gh release create $tag "dnSpy.MCP.x.zip" `
+          gh release create $tag `
+            "./artifacts/dnSpy.MCP.x-x64.zip" `
+            "./artifacts/dnSpy.MCP.x-x86.zip" `
             --title "v$version" `
             --notes $releaseBody
