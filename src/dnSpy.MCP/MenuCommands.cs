@@ -1,6 +1,10 @@
+using System;
+using System.ComponentModel.Composition;
 using dnSpy.Contracts.App;
 using dnSpy.Contracts.Menus;
+using dnSpy.Contracts.Settings.Dialog;
 using dnSpy.MCP.Mcp;
+using dnSpy.MCP.Settings;
 using MC = dnSpy.Contracts.Menus.MenuConstants;
 
 namespace dnSpy.MCP {
@@ -65,6 +69,23 @@ namespace dnSpy.MCP {
         public override void Execute(IMenuItemContext context) {
             McpLogger.ClearLog();
             McpLogger.Info("Log cleared");
+        }
+
+        public override bool IsVisible(IMenuItemContext context) {
+            return DnSpyContext.Extension != null;
+        }
+    }
+
+    [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "S_ettings...", Group = McpMenuConstants.GROUP_MCP1, Order = 40)]
+    sealed class SettingsCommand : MenuItemBase {
+        readonly Lazy<IAppSettingsService> appSettingsService;
+
+        [ImportingConstructor]
+        SettingsCommand(Lazy<IAppSettingsService> appSettingsService) =>
+            this.appSettingsService = appSettingsService;
+
+        public override void Execute(IMenuItemContext context) {
+            appSettingsService.Value.Show(McpAppSettingsPage.PAGE_GUID);
         }
 
         public override bool IsVisible(IMenuItemContext context) {

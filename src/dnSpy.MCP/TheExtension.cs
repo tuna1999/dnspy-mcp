@@ -8,12 +8,12 @@ using dnSpy.Contracts.Extension;
 using dnSpy.Contracts.Output;
 using dnSpy.Contracts.Scripting;
 using dnSpy.MCP.Mcp;
+using dnSpy.MCP.Settings;
 
 namespace dnSpy.MCP {
     [ExportExtension]
     sealed class TheExtension : IExtension {
         private McpServerHost? _serverHost;
-        private readonly McpServerOptions _options = new();
 
         [Import]
         public IDsDocumentService? DocumentService { get; set; }
@@ -26,6 +26,9 @@ namespace dnSpy.MCP {
 
         [Import]
         public IServiceLocator? ServiceLocator { get; set; }
+
+        [Import]
+        public McpSettings? Settings { get; set; }
 
         public ExtensionInfo ExtensionInfo => new ExtensionInfo {
             ShortDescription = "MCP Server for AI-assisted analysis",
@@ -45,6 +48,8 @@ namespace dnSpy.MCP {
                         LogServiceLocatorStatus();
                     }
                     McpLogger.Info("MCP extension loaded");
+                    if (Settings?.AutoStart == true)
+                        StartServer();
                     break;
 
                 case ExtensionEvent.AppExit:
@@ -71,13 +76,14 @@ namespace dnSpy.MCP {
             var errors = new List<string>();
             if (DocumentService == null) errors.Add("DocumentService is null");
             if (DecompilerService == null) errors.Add("DecompilerService is null");
+            if (Settings == null) errors.Add("Settings is null");
 
             if (errors.Count > 0) {
                 McpLogger.Error($"Cannot start: {string.Join(", ", errors)}");
                 return;
             }
 
-            _serverHost = new McpServerHost(_options);
+            _serverHost = new McpServerHost(Settings!);
             Task.Run(async () => {
                 try {
                     await _serverHost.StartAsync();
@@ -93,6 +99,6 @@ namespace dnSpy.MCP {
         }
 
         public bool IsServerRunning => _serverHost?.IsRunning ?? false;
-        public int ServerPort => _options.Port;
+        public int ServerPort => Settings?.Port ?? 0;
     }
 }

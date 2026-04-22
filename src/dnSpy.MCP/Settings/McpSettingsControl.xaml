@@ -1,0 +1,95 @@
+<UserControl x:Class="dnSpy.MCP.Settings.McpSettingsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="8">
+
+            <!-- Server -->
+            <GroupBox Header="Server" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="160" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Port:" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Port}" Margin="4,2" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Host:" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Host}" Margin="4,2" />
+
+                    <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                              Content="Auto-start when dnSpy launches"
+                              IsChecked="{Binding AutoStart}" Margin="0,6,0,0" />
+                </Grid>
+            </GroupBox>
+
+            <!-- Security -->
+            <GroupBox Header="Security" Margin="0,0,0,8">
+                <StackPanel>
+                    <CheckBox Content="Require API token for authentication"
+                              IsChecked="{Binding RequireAuth}" Margin="0,0,0,4" />
+                    <TextBlock Text="API Token:" Margin="0,4,0,2" />
+                    <TextBox Text="{Binding ApiToken}"
+                             Visibility="{Binding RequireAuth, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="Allowed CORS Origins:" Margin="0,8,0,2" />
+                    <TextBox Text="{Binding AllowedOrigins}" />
+                </StackPanel>
+            </GroupBox>
+
+            <!-- Logging -->
+            <GroupBox Header="Logging" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="160" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Log Level:" VerticalAlignment="Center" />
+                    <ComboBox Grid.Row="0" Grid.Column="1" SelectedIndex="{Binding LogLevel}" Margin="4,2">
+                        <ComboBoxItem Content="DEBUG" />
+                        <ComboBoxItem Content="INFO" />
+                        <ComboBoxItem Content="WARN" />
+                        <ComboBoxItem Content="ERROR" />
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Max recent entries:" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxRecentLogs}" Margin="4,2" />
+                </Grid>
+            </GroupBox>
+
+            <!-- Advanced -->
+            <GroupBox Header="Advanced" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="160" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Max concurrent requests:" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding MaxConcurrency}" Margin="4,2" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Max request size (MB):" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxRequestSizeMB}" Margin="4,2" />
+                </Grid>
+            </GroupBox>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

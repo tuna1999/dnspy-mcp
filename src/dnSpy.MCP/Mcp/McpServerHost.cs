@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using dnSpy.MCP.Settings;
 
 namespace dnSpy.MCP.Mcp
 {
@@ -14,16 +15,17 @@ namespace dnSpy.MCP.Mcp
     {
         private HttpListener? _listener;
         private CancellationTokenSource? _cts;
-        private readonly McpServerOptions _options;
+        private readonly McpSettings _settings;
         private readonly ToolRegistry _registry;
         private volatile bool _running;
-        private readonly SemaphoreSlim _concurrency = new(4);
+        private readonly SemaphoreSlim _concurrency;
 
         public bool IsRunning => _running;
 
-        public McpServerHost(McpServerOptions options)
+        public McpServerHost(McpSettings settings)
         {
-            _options = options;
+            _settings = settings;
+            _concurrency = new SemaphoreSlim(settings.MaxConcurrency);
             _registry = new ToolRegistry();
         }
 
@@ -33,11 +35,22 @@ namespace dnSpy.MCP.Mcp
 
             _cts = new CancellationTokenSource();
 
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://127.0.0.1:{_options.Port}/");
-            _listener.Start();
+            var listenHost = _settings.Host is "0.0.0.0" or "*" ? "+" : _settings.Host;
+            var prefix = $"http://{listenHost}:{_settings.Port}/";
 
-            McpLogger.Info($"Server started on http://127.0.0.1:{_options.Port}/");
+            _listener = new HttpListener();
+            _listener.Prefixes.Add(prefix);
+            try {
+                _listener.Start();
+            }
+            catch (HttpListenerException ex) when (listenHost == "+") {
+                throw new InvalidOperationException(
+                    $"Cannot bind to {prefix}. Run as admin or execute:\n" +
+                    $"  netsh http add urlacl url={prefix} user=Everyone",
+                    ex);
+            }
+
+            McpLogger.Info($"Server started on http://{_settings.Host}:{_settings.Port}/");
             McpLogger.Info($"Registered {(_registry.ListTools().Count)} tools");
 
             _running = true;
@@ -74,7 +87,7 @@ namespace dnSpy.MCP.Mcp
         {
             var response = context.Response;
             response.ContentType = "application/json";
-            response.Headers.Add("Access-Control-Allow-Origin", "*");
+            response.Headers.Add("Access-Control-Allow-Origin", _settings.AllowedOrigins);
             response.Headers.Add("Access-Control-Allow-Methods", "POST, OPTIONS");
             response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
 
@@ -87,11 +100,23 @@ namespace dnSpy.MCP.Mcp
                     return;
                 }
 
-                if (context.Request.ContentLength64 > 1_048_576)
+                var maxBytes = (long)_settings.MaxRequestSizeMB * 1024 * 1024;
+                if (context.Request.ContentLength64 > maxBytes)
                 {
                     response.StatusCode = 413;
-                    WriteJson(response, JsonSerializer.Serialize(new { error = "Payload too large (max 1MB)" }));
+                    WriteJson(response, JsonSerializer.Serialize(new { error = $"Payload too large (max {_settings.MaxRequestSizeMB}MB)" }));
                     return;
+                }
+
+                if (_settings.RequireAuth && !string.IsNullOrEmpty(_settings.ApiToken))
+                {
+                    var auth = context.Request.Headers["Authorization"];
+                    if (auth != $"Bearer {_settings.ApiToken}")
+                    {
+                        response.StatusCode = 401;
+                        WriteJson(response, JsonSerializer.Serialize(new { error = "Unauthorized" }));
+                        return;
+                    }
                 }
 
                 if (context.Request.HttpMethod != "POST")
