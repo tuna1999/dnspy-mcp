@@ -79,7 +79,9 @@ namespace dnSpy.MCP.Mcp {
                         callArgs[i] = node switch {
                             JsonValue jv when jv.TryGetValue(out string? s) => s,
                             JsonValue jv when jv.TryGetValue(out int n) => n,
+                            JsonValue jv when jv.TryGetValue(out long l) => l,
                             JsonValue jv when jv.TryGetValue(out bool b) => b,
+                            JsonValue jv when jv.TryGetValue(out double d) => d,
                             _ => node?.ToString()
                         };
                     }
@@ -113,8 +115,9 @@ namespace dnSpy.MCP.Mcp {
 
         private static string MapType(Type t) {
             if (t == typeof(string)) return "string";
-            if (t == typeof(int)) return "integer";
+            if (t == typeof(int) || t == typeof(long)) return "integer";
             if (t == typeof(bool)) return "boolean";
+            if (t == typeof(float) || t == typeof(double)) return "number";
             return "string";
         }
     }

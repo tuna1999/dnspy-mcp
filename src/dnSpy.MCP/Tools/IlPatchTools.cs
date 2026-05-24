@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using dnlib.DotNet;
@@ -19,33 +18,7 @@ namespace dnSpy.MCP.Tools {
         public PatchCompileException(string message) : base(message) { }
     }
 
-    public static class IlTools {
-        [Description("Returns formatted IL opcodes for a method with line numbers. Input accepts full name, token, or partial method name.")]
-        public static string GetIlOpcodesFormatted(string methodFullnameOrToken) {
-            if (DnSpyContext.DocumentService == null)
-                return "Error: DocumentService not available.";
-
-            var method = ResolveMethod(DnSpyContext.Resolver, methodFullnameOrToken);
-            if (method == null)
-                return $"Method not found: {methodFullnameOrToken}";
-
-            if (method.Body == null)
-                return $"Method has no body: {method.FullName}";
-
-            var sb = new StringBuilder();
-            sb.AppendLine($"// IL for {method.DeclaringType?.FullName}::{method.Name}");
-            sb.AppendLine("// #   Offset  OpCode            Operand");
-            sb.AppendLine("// --------------------------------------------------------------");
-
-            for (int i = 0; i < method.Body.Instructions.Count; i++) {
-                var ins = method.Body.Instructions[i];
-                var operand = ins.Operand?.ToString() ?? "";
-                sb.AppendLine($"{i,3}  {ins.Offset:X4}    {ins.OpCode.Name,-16} {operand}");
-            }
-
-            return sb.ToString();
-        }
-
+    public static class IlPatchTools {
         [Description("Patch method body using C# statements. By default dryRun=true. Example methodBody: Console.WriteLine(\"patched\"); return 1;")]
         public static string UpdateMethodBody(
             [Description("Method identifier: full name, token, or partial name")] string methodFullnameOrToken,
@@ -59,7 +32,7 @@ namespace dnSpy.MCP.Tools {
             if (string.IsNullOrWhiteSpace(methodBody))
                 return "Error: methodBody is required.";
 
-            var method = ResolveMethod(DnSpyContext.Resolver, methodFullnameOrToken);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullnameOrToken);
             if (method == null)
                 return $"Method not found: {methodFullnameOrToken}";
 
@@ -88,15 +61,9 @@ namespace dnSpy.MCP.Tools {
                 return $"[DRY RUN] Patch compile succeeded for {method.FullName}. New instruction count: {clonedBody.Instructions.Count}";
             }
 
-            // Atomic swap: build the new body fully before assigning it to the method.
-            // This prevents leaving the original method body in a corrupted state on failure.
             method.Body = clonedBody;
             TreeViewTools.RefreshTreeViewOnUIThread();
             return $"Patched method body: {method.FullName}";
-        }
-
-        private static MethodDef? ResolveMethod(MethodResolver resolver, string methodFullnameOrToken) {
-            return resolver.ResolveMethodFlexible(methodFullnameOrToken);
         }
 
         // ---------------------------------------------------------------------------
@@ -115,19 +82,17 @@ namespace dnSpy.MCP.Tools {
             { "System.UInt16", "ushort" },
         };
 
-        private static string NormalizeMetadataTypeName(string name) {
-            // dnlib generic arity syntax: List`1 -> List
+        internal static string NormalizeMetadataTypeName(string name) {
             var tickIndex = name.IndexOf('`');
             if (tickIndex >= 0)
                 name = name.Substring(0, tickIndex);
             return name.Replace('/', '.');
         }
 
-        private static string ToCSharpTypeName(TypeSig? type) {
+        internal static string ToCSharpTypeName(TypeSig? type) {
             if (type == null)
                 return "object";
 
-            // Handle byref (ref/out parameters): "int&" -> "ref int"
             if (type.IsByRef) {
                 var elementType = type.Next;
                 if (elementType != null && elementType.IsPointer)
@@ -135,13 +100,11 @@ namespace dnSpy.MCP.Tools {
                 return "ref " + ToCSharpTypeName(elementType);
             }
 
-            // Handle pointer types
             if (type.IsPointer) {
                 var element = type.Next;
                 return element != null ? ToCSharpTypeName(element) + "*" : "void*";
             }
 
-            // Handle arrays
             if (type.IsSZArray)
                 return ToCSharpTypeName(type.Next) + "[]";
 
@@ -151,16 +114,13 @@ namespace dnSpy.MCP.Tools {
                 return ToCSharpTypeName(arraySig.Next) + $"[{commas}]";
             }
 
-            // Handle generic instantiations: List`1<int> -> List<int>
             if (type.IsGenericInstanceType) {
                 var genericType = (GenericInstSig)type;
-                // ToCSharpTypeName already normalizes; strip backtick suffix if GenericType is a type ref
                 var baseName = NormalizeMetadataTypeName(genericType.GenericType.FullName ?? "object");
                 var args = string.Join(", ", genericType.GenericArguments.Select(ToCSharpTypeName));
                 return $"{baseName}<{args}>";
             }
 
-            // Handle standalone generic type/method parameters: `0, !!0, etc.
             if (type.IsGenericParameter)
                 return "object";
 
@@ -183,8 +143,6 @@ namespace dnSpy.MCP.Tools {
         private static string BuildPatchSource(MethodDef method, string methodBody) {
             var parameters = new List<string>();
 
-            // Instance method: always include @this. For value types it must be "ref T @this"
-            // because structs are passed byref in IL (ldarga / starga).
             if (!method.IsStatic && method.DeclaringType != null) {
                 var thisType = ToCSharpTypeName(method.DeclaringType.ToTypeSig());
                 if (method.DeclaringType.IsValueType)
@@ -193,24 +151,22 @@ namespace dnSpy.MCP.Tools {
                     parameters.Add($"{thisType} @this");
             }
 
-            // Regular parameters
             foreach (var p in method.Parameters.Where(p => !p.IsHiddenThisParameter)) {
                 var paramName = p.Name?.ToString() ?? $"arg{p.Index}";
                 var paramType = ToCSharpTypeName(p.Type);
                 parameters.Add($"{paramType} {MakeSafeIdentifier(paramName)}");
             }
 
-            // Return type
             var returnType = ToCSharpTypeName(method.ReturnType);
 
             var signatureParams = string.Join(", ", parameters);
 
             return $@"using System;
-public static class __Patch {{
-    public static {returnType} PatchedMethod({signatureParams}) {{
-        {methodBody}
-    }}
-}}";
+	public static class __Patch {{
+	    public static {returnType} PatchedMethod({signatureParams}) {{
+	        {methodBody}
+	    }}
+	}}";
         }
 
         private static string MakeSafeIdentifier(string name) {
@@ -275,7 +231,6 @@ public static class __Patch {{
 
             var syntaxTree = CSharpSyntaxTree.ParseText(source);
 
-            // Start with common BCL references, then add the target module's assembly
             var references = BuildRoslynReferences();
             var targetModule = targetMethod.Module;
             if (!string.IsNullOrWhiteSpace(targetModule?.Location) && File.Exists(targetModule.Location)) {
@@ -304,7 +259,6 @@ public static class __Patch {{
                     throw new PatchCompileException($"Compilation errors:\n{errors}");
                 }
 
-                // Extract the compiled IL bytes and load a patch module from them
                 var patchModule = ModuleDefMD.Load(ms.ToArray());
                 var patchType = patchModule.Types.FirstOrDefault(t => t.Name == "__Patch");
                 if (patchType == null)
@@ -325,11 +279,6 @@ public static class __Patch {{
         // CilBody construction
         // ---------------------------------------------------------------------------
 
-        /// <summary>
-        /// Builds a new CilBody from the compiled patch method.
-        /// Uses dnlib's Importer to safely cross-reference type/member tokens
-        /// from the patch module into the target module.
-        /// </summary>
         private static CilBody BuildClonedBodyFromPatch(MethodDef targetMethod, string methodBody) {
             var patchMethod = CompilePatch(targetMethod, methodBody);
             if (patchMethod?.Body == null)
@@ -338,29 +287,18 @@ public static class __Patch {{
             var patchBody = patchMethod.Body;
             var targetModule = targetMethod.Module;
 
-            // Importer maps patch-module references into the target module's metadata tables.
-            // TryToUseDefs: prefer existing TypeDef/MethodDef/FieldDef entries in the target
-            // module over creating new TypeRef/MemberRef rows (avoids duplicate metadata tokens).
             var importer = new Importer(targetModule, ImporterOptions.TryToUseDefs);
 
             var instructionMap = new Dictionary<Instruction, Instruction>();
 
-            // Build a new CilBody rather than mutating the existing one.
-            // This keeps the original body intact until the swap is complete.
             var newBody = new CilBody(patchBody.InitLocals, new List<Instruction>(), new List<ExceptionHandler>(), new List<Local>());
 
-            // Pass 1: clone all instructions and build the map.
-            // Branch operands are deferred to pass 2 — they cannot be resolved yet
-            // because forward targets haven't been added to the map.
             foreach (var src in patchBody.Instructions) {
                 var dst = CreateInstructionClone(src, importer);
-
                 newBody.Instructions.Add(dst);
                 instructionMap[src] = dst;
             }
 
-            // Pass 2: remap all branch targets using the instruction map.
-            // Both single-target (br, brfalse.s, etc.) and multi-target (switch) are handled.
             for (int i = 0; i < patchBody.Instructions.Count; i++) {
                 var src = patchBody.Instructions[i];
                 var dst = newBody.Instructions[i];
@@ -377,13 +315,11 @@ public static class __Patch {{
                 }
             }
 
-            // Import and clone local variable types (must import the TypeSig into the target module)
             foreach (var v in patchBody.Variables) {
                 var importedType = importer.Import(v.Type);
                 newBody.Variables.Add(new Local(importedType));
             }
 
-            // Import and clone exception handlers
             foreach (var eh in patchBody.ExceptionHandlers) {
                 var clone = new ExceptionHandler(eh.HandlerType) {
                     CatchType = eh.CatchType != null ? importer.Import(eh.CatchType) : null,
@@ -396,9 +332,6 @@ public static class __Patch {{
                 newBody.ExceptionHandlers.Add(clone);
             }
 
-            // Keep branch layout as cloned to preserve EH boundaries.
-            // Branch simplification/optimization can rewrite instruction targets and
-            // invalidate exception handler anchors if done after EH mapping.
             newBody.UpdateInstructionOffsets();
 
             return newBody;
@@ -409,12 +342,8 @@ public static class __Patch {{
 
             return operand switch {
                 null => Instruction.Create(src.OpCode),
-
-                // Branch/switch: must be created with Instruction/Instruction[] operand,
-                // then remapped to cloned targets in pass 2.
                 Instruction target => Instruction.Create(src.OpCode, target),
                 Instruction[] targets => Instruction.Create(src.OpCode, targets),
-
                 sbyte v => Instruction.Create(src.OpCode, v),
                 byte v => Instruction.Create(src.OpCode, v),
                 int v => Instruction.Create(src.OpCode, v),
@@ -428,26 +357,19 @@ public static class __Patch {{
                 ITypeDefOrRef v => Instruction.Create(src.OpCode, v),
                 IMethod v => Instruction.Create(src.OpCode, v),
                 IField v => Instruction.Create(src.OpCode, v),
-
                 _ => throw new PatchCompileException($"Unsupported IL operand type: {operand.GetType().FullName} ({src.OpCode})"),
             };
         }
 
-        /// <summary>
-        /// Imports an operand value into the target module using dnlib's Importer.
-        /// Safe operands (primitives, strings, instructions, null) are returned unchanged.
-        /// Member references, type references, and field references are resolved in the
-        /// target module's metadata tables so they remain valid after the patch is applied.
-        /// </summary>
         private static object? ImportOperand(Importer importer, object? operand) {
             return operand switch {
                 null                            => null,
-                Instruction                     => operand,  // handled in pass 2
-                Instruction[]                   => operand,  // handled in pass 2
+                Instruction                     => operand,
+                Instruction[]                   => operand,
                 ITypeDefOrRef tdor              => importer.Import(tdor),
                 IMethodDefOrRef mdor            => importer.Import(mdor),
                 IField ifd                      => importer.Import(ifd),
-                _                               => operand,  // primitives, byte[], string, etc.
+                _                               => operand,
             };
         }
     }

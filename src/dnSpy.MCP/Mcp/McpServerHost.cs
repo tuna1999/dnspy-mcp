@@ -256,14 +256,16 @@ namespace dnSpy.MCP.Mcp
         private static async Task<string?> ReadLineAsync(Stream stream)
         {
             var sb = new StringBuilder();
+            var buf = new byte[1];
             while (true)
             {
-                var b = stream.ReadByte();
-                if (b == -1) return sb.Length > 0 ? sb.ToString() : null;
+                var read = await stream.ReadAsync(buf, 0, 1);
+                if (read == 0) return sb.Length > 0 ? sb.ToString() : null;
+                var b = buf[0];
                 if (b == '\r')
                 {
-                    var next = stream.ReadByte();
                     // consume \n after \r
+                    var next = await stream.ReadAsync(buf, 0, 1);
                     _ = next;
                     break;
                 }

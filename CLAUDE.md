@@ -41,11 +41,13 @@ dnspy_mcp/
 │   ├── DnSpyContext.cs       # Static service bridge + lazy IServiceLocator resolution
 │   ├── MenuCommands.cs        # MCP Server menu items
 │   ├── Mcp/
-│   │   ├── McpServerHost.cs  # HttpListener + JSON-RPC 2.0 dispatch
+│   │   ├── McpServerHost.cs  # TcpListener + JSON-RPC 2.0 dispatch
 │   │   ├── ToolRegistry.cs   # Reflection-based tool discovery
 │   │   ├── McpLogger.cs     # File + Output Window logging
 │   │   └── McpServerOptions.cs
-│   ├── Tools/                # 13 tool classes, 36 tools
+│   ├── Tools/                # 14 tool classes, 36 tools
+│   │   ├── IlDisplayTools.cs # IL opcode formatting (read-only)
+│   │   ├── IlPatchTools.cs   # IL patching via Roslyn compilation
 │   └── Helpers/
 │       ├── MethodResolver.cs
 │       └── TextDecompilerOutput.cs
@@ -163,11 +165,11 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 | Tool | Description |
 |------|-------------|
 | `get_method_il` | Raw IL instructions with stack/exception info |
-| `get_il_opcodes_formatted` | Formatted IL opcodes with offsets |
+| `get_il_opcodes_formatted` | Formatted IL opcodes with offsets (`IlDisplayTools`) |
 | `get_method_signatures` | Method metadata: params, return, flags, generics |
 | `get_type_hierarchy` | Inheritance chain, interfaces, member counts |
 | `get_method_body` | IL bytes with MaxStack/InitLocals info |
-| `update_method_body` | Patch method IL using C# statements (dry-run by default) |
+| `update_method_body` | Patch method IL using C# statements (dry-run by default, `IlPatchTools`) |
 
 ### Cross-References
 | Tool | Description |

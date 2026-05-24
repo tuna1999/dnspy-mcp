@@ -6,6 +6,24 @@ using dnSpy.Contracts.Documents;
 
 namespace dnSpy.MCP.Tools {
     public static class RenameTools {
+        private static (TypeDef? type, ModuleDef? module, IDsDocument? doc) FindType(
+            IDsDocumentService documentService, string assembly, string @namespace, string className) {
+            foreach (var doc in documentService.GetDocuments()) {
+                if (doc.ModuleDef is not ModuleDef mod)
+                    continue;
+                if (!string.Equals(mod.Assembly?.Name?.String, assembly, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                foreach (var type in mod.GetTypes()) {
+                    if (!string.Equals(type.Namespace, @namespace, StringComparison.Ordinal))
+                        continue;
+                    if (!string.Equals(type.Name.String, className, StringComparison.Ordinal))
+                        continue;
+                    return (type, mod, doc);
+                }
+            }
+            return (null, null, null);
+        }
+
         [Description("Renames a namespace across matching types in an assembly. Use dryRun=true (default) to preview changes without modifying metadata.")]
         public static string RenameNamespace(
             [Description("Assembly simple name (eg. MyAssembly)")] string assembly,
@@ -75,33 +93,7 @@ namespace dnSpy.MCP.Tools {
             if (documentService == null)
                 return "Error: DocumentService not available.";
 
-            TypeDef? target = null;
-            ModuleDef? targetModule = null;
-            IDsDocument? targetDoc = null;
-
-            foreach (var doc in documentService.GetDocuments()) {
-                if (doc.ModuleDef is not ModuleDef mod)
-                    continue;
-
-                if (!string.Equals(mod.Assembly?.Name?.String, assembly, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                foreach (var type in mod.GetTypes()) {
-                    if (!string.Equals(type.Namespace, @namespace, StringComparison.Ordinal))
-                        continue;
-
-                    if (!string.Equals(type.Name.String, oldClassName, StringComparison.Ordinal))
-                        continue;
-
-                    target = type;
-                    targetModule = mod;
-                    targetDoc = doc;
-                    break;
-                }
-
-                if (target != null)
-                    break;
-            }
+            var (target, targetModule, targetDoc) = FindType(documentService, assembly, @namespace, oldClassName);
 
             if (target == null || targetModule == null)
                 return $"Class '{@namespace}.{oldClassName}' not found in assembly '{assembly}'.";
@@ -133,33 +125,7 @@ namespace dnSpy.MCP.Tools {
             if (documentService == null)
                 return "Error: DocumentService not available.";
 
-            TypeDef? targetType = null;
-            ModuleDef? targetModule = null;
-            IDsDocument? targetDoc = null;
-
-            foreach (var doc in documentService.GetDocuments()) {
-                if (doc.ModuleDef is not ModuleDef mod)
-                    continue;
-
-                if (!string.Equals(mod.Assembly?.Name?.String, assembly, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                foreach (var type in mod.GetTypes()) {
-                    if (!string.Equals(type.Namespace, @namespace, StringComparison.Ordinal))
-                        continue;
-
-                    if (!string.Equals(type.Name.String, className, StringComparison.Ordinal))
-                        continue;
-
-                    targetType = type;
-                    targetModule = mod;
-                    targetDoc = doc;
-                    break;
-                }
-
-                if (targetType != null)
-                    break;
-            }
+            var (targetType, targetModule, targetDoc) = FindType(documentService, assembly, @namespace, className);
 
             if (targetType == null)
                 return $"Class '{@namespace}.{className}' not found in assembly '{assembly}'.";

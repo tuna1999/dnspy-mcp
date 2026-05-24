@@ -98,7 +98,9 @@ namespace dnSpy.MCP {
             try {
                 _outputPane = _outputService.Create(OutputPaneGuid, "MCP Server", (string?)null);
             }
-            catch { }
+            catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"MCP: Failed to create output pane: {ex.Message}");
+            }
         }
     }
 }
