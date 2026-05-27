@@ -29,7 +29,7 @@ Options: `-Clean`, `-Deploy`, `-DeployDir <path>`, `-Configuration <Debug|Releas
 GitHub Actions (`build.yml`) auto-downloads dnSpy deps and runs `dotnet build -c Release`. No manual setup needed.
 
 ### Build output
-- **Release DLL**: `src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll`
+- **Release DLL**: `src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll`
 - **Deploy to dnSpy**: copy `dnSpy.MCP.x.dll`, `.deps.json`, `.pdb` (optional) to `<dnSpy>/bin/Extensions/`
 
 ## Project Layout
@@ -58,7 +58,7 @@ dnspy_mcp/
 ## Architecture
 
 ### Why HttpListener Instead of MCP SDK?
-The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x but dnSpy uses .NET 8.0 with `Microsoft.Extensions.*` 8.x — a hard version conflict. Solution: custom HTTP transport via `System.Net.HttpListener`.
+The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: custom HTTP transport via `System.Net.HttpListener`.
 
 ### Extension Lifecycle
 ```

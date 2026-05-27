@@ -34,3 +34,30 @@ deps/
 
 # Claude Code
 .claude/
+.mcp.json
+
+# Test output
+TestResults/
+
+# Coverage
+coverage/
+*.cobertura.xml
+*.opencover.xml
+
+# Environment / secrets
+.env
+.env.*
+*.env
+secrets.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+*.cache
+*.db
+
+# NuGet fallback
+*.nupkg
+.nuget/

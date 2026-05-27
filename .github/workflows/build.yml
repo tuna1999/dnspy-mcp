@@ -7,9 +7,9 @@ on:
     branches: [master, main]
 
 env:
-  DOTNET_VERSION: '8.0.x'
-  DNSPY_TAG: 'v6.5.1'
-  DNSPY_REPO: 'dnSpyEx/dnSpy'
+  DOTNET_VERSION: "10.0.x"
+  DNSPY_TAG: "v6.6.0-rc1"
+  DNSPY_REPO: "dnSpyEx/dnSpy"
 
 permissions:
   contents: read
@@ -22,11 +22,11 @@ jobs:
       matrix:
         include:
           - arch: x64
-            asset_pattern: 'net8\.0.*win.*x64.*\.zip'
-            asset_fallback: 'dnSpy-net-win64.zip'
+            asset_pattern: 'net10\.0.*win.*x64.*\.zip'
+            asset_fallback: "dnSpy-net-win64.zip"
           - arch: x86
-            asset_pattern: 'net8\.0.*win.*x86.*\.zip'
-            asset_fallback: 'dnSpy-net-win32.zip'
+            asset_pattern: 'net10\.0.*win.*x86.*\.zip'
+            asset_fallback: "dnSpy-net-win32.zip"
 
     steps:
       - name: Checkout
@@ -154,7 +154,7 @@ jobs:
 
       - name: Check build output
         run: |
-          $dll = "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll"
+          $dll = "src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll"
           if (Test-Path $dll) {
             $size = [Math]::Round((Get-Item $dll).Length / 1KB, 1)
             Write-Host "Build succeeded (${{ matrix.arch }}): $dll ($size KB)"
@@ -168,7 +168,7 @@ jobs:
         with:
           name: dnSpy-MCP-win-${{ matrix.arch }}
           path: |
-            src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll
-            src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.deps.json
-            src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.pdb
+            src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll
+            src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.deps.json
+            src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.pdb
           retention-days: 7

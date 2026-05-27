@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  DNSPY_TAG: 'v6.5.1'
-  DNSPY_REPO: 'dnSpyEx/dnSpy'
+  DNSPY_TAG: "v6.6.0-rc1"
+  DNSPY_REPO: "dnSpyEx/dnSpy"
 
 permissions:
   contents: write
@@ -67,11 +67,11 @@ jobs:
       matrix:
         include:
           - arch: x64
-            asset_pattern: 'net8\.0.*win.*x64.*\.zip'
-            asset_fallback: 'dnSpy-net-win64.zip'
+            asset_pattern: 'net10\.0.*win.*x64.*\.zip'
+            asset_fallback: "dnSpy-net-win64.zip"
           - arch: x86
-            asset_pattern: 'net8\.0.*win.*x86.*\.zip'
-            asset_fallback: 'dnSpy-net-win32.zip'
+            asset_pattern: 'net10\.0.*win.*x86.*\.zip'
+            asset_fallback: "dnSpy-net-win32.zip"
 
     steps:
       - name: Checkout
@@ -80,7 +80,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "10.0.x"
 
       - name: Download dnSpy binaries (${{ matrix.arch }})
         shell: pwsh
@@ -143,8 +143,8 @@ jobs:
         run: |
           $outDir = "release-out"
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-          Copy-Item "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll" $outDir
-          Copy-Item "src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.deps.json" $outDir
+          Copy-Item "src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll" $outDir
+          Copy-Item "src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.deps.json" $outDir
 
           Compress-Archive -Path "$outDir/*" -DestinationPath "dnSpy.MCP.x-${{ matrix.arch }}.zip" -Force
           Write-Host "Packaged: dnSpy.MCP.x-${{ matrix.arch }}.zip"

@@ -205,6 +205,9 @@ dnspy_mcp/
 │       └── MenuCommands.cs          # dnSpy menu items
 ├── deps/                        # dnSpy contract DLLs (for standalone build)
 ├── build/Extensions/           # Deployed extension DLLs
+├── skills/                     # AI agent workflow guides (install to .claude/skills/)
+│   └── deobfuscate-dotnet/     # .NET deobfuscation skill
+│       └── SKILL.md
 └── scripts/
     └── build.ps1           # Build & deploy script
 ```
@@ -340,6 +343,53 @@ You should see 36 MCP tools available:
 ```
 
 If the agent does not auto-discover the tools, tell it: "Use the dnSpy MCP server at `http://127.0.0.1:5150/` to access decompilation and analysis tools."
+
+## Skills
+
+The `skills/` directory contains reusable workflow guides for AI agents working with this MCP server. These skills teach the AI **how to think** about common analysis tasks — it dynamically picks tools based on what it discovers, rather than following rigid steps.
+
+### Available Skills
+
+| Skill | Description |
+|-------|-------------|
+| `deobfuscate-dotnet` | Deobfuscate .NET binaries: string decryption, symbol renaming, control flow analysis, proxy call resolution, anti-tamper removal |
+
+### Skill Structure
+
+Each skill is a folder containing a `SKILL.md` file:
+
+```
+skills/
+└── deobfuscate-dotnet/
+    └── SKILL.md          # Skill definition (YAML frontmatter + instructions)
+```
+
+### Installing Skills for Claude Code
+
+Claude Code auto-discovers skills from `.claude/skills/`. To install:
+
+```bash
+# Install a specific skill
+cp -r skills/deobfuscate-dotnet .claude/skills/
+
+# Or install all skills
+cp -r skills/* .claude/skills/
+```
+
+After installing, the skill activates automatically when you describe a matching task — for example:
+
+```
+# These will trigger the deobfuscation skill:
+"Giúp tôi decrypt các string trong binary này"
+"Rename lại các class/method bị obfuscate"
+"Binary này bị protect bằng gì? Phân tích giúp tôi"
+```
+
+No restart needed — Claude Code picks up new skills on the next message.
+
+### For Other AI Editors
+
+If your AI editor supports custom instructions or system prompts, paste the content of `SKILL.md` directly into your configuration. The skill content is self-contained and editor-agnostic.
 
 ## License
 
