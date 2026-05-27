@@ -8,7 +8,7 @@ using dnSpy.MCP.Mcp;
 
 namespace dnSpy.MCP.Tools {
     public static class TreeViewTools {
-        static T? RunOnUIThread<T>(Func<T> action) where T : class {
+        static T? RunOnUIThread<T>(Func<T> action) where T : class? {
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher == null)
                 return null;

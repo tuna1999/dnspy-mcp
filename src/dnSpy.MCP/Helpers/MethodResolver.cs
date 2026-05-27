@@ -169,7 +169,7 @@ namespace dnSpy.MCP.Helpers {
 
         private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
-        private bool MatchesPattern(string input, string pattern, StringComparison comparison) {
+        private bool MatchesPattern(string? input, string pattern, StringComparison comparison) {
             if (string.IsNullOrEmpty(input)) return false;
             if (pattern.StartsWith("regex:", StringComparison.OrdinalIgnoreCase)) {
                 var regex = pattern.Substring(6);

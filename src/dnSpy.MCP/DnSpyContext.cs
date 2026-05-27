@@ -96,7 +96,7 @@ namespace dnSpy.MCP {
         internal static void EnsureOutputPane() {
             if (_outputPane != null || _outputService == null) return;
             try {
-                _outputPane = _outputService.Create(OutputPaneGuid, "MCP Server", (string?)null);
+                _outputPane = _outputService.Create(OutputPaneGuid, "MCP Server", string.Empty);
             }
             catch (Exception ex) {
                 System.Diagnostics.Debug.WriteLine($"MCP: Failed to create output pane: {ex.Message}");

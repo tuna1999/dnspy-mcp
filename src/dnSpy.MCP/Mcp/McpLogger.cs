@@ -5,11 +5,20 @@ using System.Text;
 using dnSpy.Contracts.Text;
 
 namespace dnSpy.MCP.Mcp {
+    /// <summary>
+    /// Thread-safe logger that writes to file, debug output, and the dnSpy output pane.
+    /// Supports automatic log rotation when the file exceeds <see cref="MaxFileSizeBytes"/>.
+    /// </summary>
     public static class McpLogger {
         static readonly ConcurrentQueue<string> _recent = new();
         const int MaxRecent = 200;
         static readonly string _logPath;
         static readonly object _fileLock = new();
+
+        /// <summary>
+        /// Maximum log file size before rotation (5 MB).
+        /// </summary>
+        const long MaxFileSizeBytes = 5 * 1024 * 1024;
 
         static McpLogger() {
             var dir = AppDomain.CurrentDomain.BaseDirectory;
@@ -30,14 +39,44 @@ namespace dnSpy.MCP.Mcp {
 
             try {
                 lock (_fileLock) {
+                    RotateLogIfNeeded();
                     File.AppendAllText(_logPath, line + Environment.NewLine);
                 }
             }
-            catch { }
+            catch (Exception ex) {
+                // Fallback: at least write to debug output so nothing is silently lost
+                System.Diagnostics.Debug.WriteLine($"MCP [LOG ERROR]: {ex.Message}");
+            }
 
             System.Diagnostics.Debug.WriteLine($"MCP: {line}");
 
             WriteToOutputWindow(color, line);
+        }
+
+        /// <summary>
+        /// Rotates the log file if it exceeds <see cref="MaxFileSizeBytes"/>.
+        /// Old file is renamed to mcp-server.log.1, .2, etc. (up to 3 backups).
+        /// Must be called while holding <see cref="_fileLock"/>.
+        /// </summary>
+        static void RotateLogIfNeeded() {
+            if (!File.Exists(_logPath)) return;
+
+            var fi = new FileInfo(_logPath);
+            if (fi.Length < MaxFileSizeBytes) return;
+
+            // Delete oldest backup if exists
+            var oldest = _logPath + ".3";
+            if (File.Exists(oldest)) File.Delete(oldest);
+
+            // Shift backups: .2 -> .3, .1 -> .2, current -> .1
+            for (int i = 2; i >= 1; i--) {
+                var src = _logPath + "." + i;
+                var dst = _logPath + "." + (i + 1);
+                if (File.Exists(src)) File.Move(src, dst);
+            }
+
+            File.Move(_logPath, _logPath + ".1");
+            Info($"Log rotated (file exceeded {MaxFileSizeBytes / 1024 / 1024} MB)");
         }
 
         static void WriteToOutputWindow(object color, string text) {
@@ -80,7 +119,9 @@ namespace dnSpy.MCP.Mcp {
                         File.Delete(_logPath);
                 }
             }
-            catch { }
+            catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"MCP [CLEAR ERROR]: {ex.Message}");
+            }
             while (_recent.TryDequeue(out _)) { }
 
             // Clear the Output Window pane too

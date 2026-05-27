@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -20,6 +23,9 @@ namespace dnSpy.MCP.Mcp
         private readonly ToolRegistry _registry;
         private volatile bool _running;
         private readonly SemaphoreSlim _concurrency;
+        private readonly Stopwatch _uptime = Stopwatch.StartNew();
+        private int _activeConnections;
+        private readonly TaskCompletionSource _stoppedTcs = new();
 
         public bool IsRunning => _running;
 
@@ -50,6 +56,10 @@ namespace dnSpy.MCP.Mcp
 
             _running = true;
 
+            // Warn if auth is enabled but token is empty
+            if (_settings.RequireAuth && string.IsNullOrEmpty(_settings.ApiToken))
+                McpLogger.Warn("Auth enabled but ApiToken is empty — authentication is DISABLED");
+
             _ = Task.Run(() => ListenAsync(_cts.Token));
         }
 
@@ -61,9 +71,13 @@ namespace dnSpy.MCP.Mcp
                 {
                     var client = await _listener!.AcceptTcpClientAsync().WaitAsync(ct);
                     await _concurrency.WaitAsync(ct);
-                    _ = HandleConnection(client).ContinueWith(_ => {
-                        _concurrency.Release();
-                        client.Dispose();
+                    Interlocked.Increment(ref _activeConnections);
+                    _ = Task.Run(async () => {
+                        try { await HandleConnection(client); }
+                        finally { _concurrency.Release(); client.Dispose(); }
+                    }).ContinueWith(_ => {
+                        if (Interlocked.Decrement(ref _activeConnections) == 0 && !_running)
+                            _stoppedTcs.TrySetResult();
                     });
                 }
                 catch (OperationCanceledException) { break; }
@@ -96,6 +110,25 @@ namespace dnSpy.MCP.Mcp
                     var colonIdx = headerLine.IndexOf(':');
                     if (colonIdx > 0)
                         headers[headerLine.Substring(0, colonIdx).Trim()] = headerLine.Substring(colonIdx + 1).Trim();
+                }
+
+                // Health check endpoint
+                var requestPath = requestLine.Substring(spaceIdx + 1);
+                var queryIdx = requestPath.IndexOf(' ');
+                var path = queryIdx > 0 ? requestPath.Substring(0, queryIdx) : requestPath.Trim();
+
+                if (method == "GET" && (path == "/health" || path == "/ping"))
+                {
+                    var health = new JsonObject
+                    {
+                        ["status"] = "healthy",
+                        ["port"] = _settings.Port,
+                        ["uptime_seconds"] = (long)_uptime.Elapsed.TotalSeconds,
+                        ["tools_count"] = _registry.ListTools().Count,
+                        ["active_connections"] = _activeConnections
+                    };
+                    await WriteJsonResponseAsync(stream, 200, health);
+                    return;
                 }
 
                 // CORS preflight
@@ -211,7 +244,7 @@ namespace dnSpy.MCP.Mcp
                     {
                         var toolName = req["params"]?["name"]?.GetValue<string>() ?? "";
                         McpLogger.Info($"Tool call: {toolName}");
-                        var callResult = HandleToolCall(req);
+                        var callResult = await HandleToolCallAsync(req);
                         results.Add(isNotification ? null : callResult);
                     }
                     else if (rpcMethod == "notifications/initialized" || rpcMethod == "shutdown")
@@ -255,18 +288,29 @@ namespace dnSpy.MCP.Mcp
 
         private static async Task<string?> ReadLineAsync(Stream stream)
         {
-            var sb = new StringBuilder();
-            var buf = new byte[1];
+            var sb = new StringBuilder(128);
+            var buf = new byte[256];
+            int bufPos = 0, bufLen = 0;
+
             while (true)
             {
-                var read = await stream.ReadAsync(buf, 0, 1);
-                if (read == 0) return sb.Length > 0 ? sb.ToString() : null;
-                var b = buf[0];
+                if (bufPos >= bufLen)
+                {
+                    bufLen = await stream.ReadAsync(buf, 0, buf.Length);
+                    if (bufLen == 0) return sb.Length > 0 ? sb.ToString() : null;
+                    bufPos = 0;
+                }
+
+                var b = buf[bufPos++];
                 if (b == '\r')
                 {
                     // consume \n after \r
-                    var next = await stream.ReadAsync(buf, 0, 1);
-                    _ = next;
+                    if (bufPos >= bufLen)
+                    {
+                        bufLen = await stream.ReadAsync(buf, 0, buf.Length);
+                        bufPos = 0;
+                    }
+                    if (bufLen > 0 && buf[bufPos] == '\n') bufPos++;
                     break;
                 }
                 if (b == '\n') break;
@@ -318,7 +362,7 @@ namespace dnSpy.MCP.Mcp
             _ => "Unknown"
         };
 
-        private JsonNode HandleToolCall(JsonNode request)
+        private async Task<JsonNode> HandleToolCallAsync(JsonNode request)
         {
             var toolName = request["params"]?["name"]?.GetValue<string>();
             var arguments = request["params"]?["arguments"] as JsonObject;
@@ -336,7 +380,9 @@ namespace dnSpy.MCP.Mcp
 
             try
             {
-                var result = tool.Invoke(arguments);
+                var timeout = TimeSpan.FromSeconds(_settings.ToolTimeoutSeconds);
+                var result = await Task.Run(() => tool.Invoke(arguments)).WaitAsync(timeout);
+
                 var content = new JsonArray
                 {
                     new JsonObject
@@ -351,6 +397,11 @@ namespace dnSpy.MCP.Mcp
                     ["content"] = content
                 });
             }
+            catch (TimeoutException)
+            {
+                McpLogger.Warn($"Tool '{toolName}' timed out after {_settings.ToolTimeoutSeconds}s");
+                return MakeError(request["id"], -32603, $"Tool execution timed out after {_settings.ToolTimeoutSeconds} seconds");
+            }
             catch (Exception ex)
             {
                 McpLogger.Error(ex, $"Tool '{toolName}'");
@@ -360,6 +411,7 @@ namespace dnSpy.MCP.Mcp
 
         private static JsonObject CreateServerCapabilities()
         {
+            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
             return new JsonObject
             {
                 ["protocolVersion"] = "2024-11-05",
@@ -370,7 +422,7 @@ namespace dnSpy.MCP.Mcp
                 ["serverInfo"] = new JsonObject
                 {
                     ["name"] = "dnSpy-MCP",
-                    ["version"] = "1.4.0"
+                    ["version"] = version
                 }
             };
         }
@@ -407,10 +459,25 @@ namespace dnSpy.MCP.Mcp
         {
             if (!_running) return;
 
+            _running = false;
             _cts?.Cancel();
             _listener?.Stop();
             _listener = null;
-            _running = false;
+
+            // Wait for in-flight requests to complete (max 10 seconds)
+            if (_activeConnections > 0)
+            {
+                try
+                {
+                    _stoppedTcs.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                }
+                catch (TimeoutException)
+                {
+                    McpLogger.Warn("Shutdown timeout: some connections were not closed gracefully");
+                }
+                catch (OperationCanceledException) { }
+            }
+
             McpLogger.Info("Server stopped");
         }
 

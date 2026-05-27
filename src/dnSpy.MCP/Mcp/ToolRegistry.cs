@@ -75,23 +75,43 @@ namespace dnSpy.MCP.Mcp {
 
                 for (int i = 0; i < methodParams.Length; i++) {
                     var p = methodParams[i];
-                    if (arguments != null && arguments.TryGetPropertyValue(p.Name ?? "", out var node)) {
-                        callArgs[i] = node switch {
-                            JsonValue jv when jv.TryGetValue(out string? s) => s,
-                            JsonValue jv when jv.TryGetValue(out int n) => n,
-                            JsonValue jv when jv.TryGetValue(out long l) => l,
-                            JsonValue jv when jv.TryGetValue(out bool b) => b,
-                            JsonValue jv when jv.TryGetValue(out double d) => d,
-                            _ => node?.ToString()
-                        };
+                    var paramName = p.Name ?? "arg";
+
+                    if (arguments != null && arguments.TryGetPropertyValue(paramName, out var node)) {
+                        callArgs[i] = ConvertJsonValue(node, p.ParameterType, paramName);
                     }
-                    else if (p.HasDefaultValue) {
-                        callArgs[i] = p.DefaultValue;
+                    else if (!p.HasDefaultValue) {
+                        throw new ArgumentException($"Missing required parameter: '{paramName}'");
                     }
                 }
 
                 var result = Method.Invoke(null, callArgs);
                 return result?.ToString() ?? "";
+            }
+
+            private static object? ConvertJsonValue(JsonNode? node, Type targetType, string paramName) {
+                if (node == null) return null;
+
+                // Handle nullable wrapper types
+                var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+                return node switch {
+                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out string? s) => s,
+                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out int n) => n.ToString(),
+                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out long l) => l.ToString(),
+                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out double d) => d.ToString(),
+                    JsonValue jv when targetType == typeof(int) && jv.TryGetValue(out int n) => n,
+                    JsonValue jv when targetType == typeof(int) && jv.TryGetValue(out long l) => (int)l,
+                    JsonValue jv when targetType == typeof(int) && jv.TryGetValue(out double d) => (int)d,
+                    JsonValue jv when targetType == typeof(long) && jv.TryGetValue(out long l) => l,
+                    JsonValue jv when targetType == typeof(long) && jv.TryGetValue(out int n) => (long)n,
+                    JsonValue jv when targetType == typeof(bool) && jv.TryGetValue(out bool b) => b,
+                    JsonValue jv when targetType == typeof(double) && jv.TryGetValue(out double d) => d,
+                    JsonValue jv when targetType == typeof(double) && jv.TryGetValue(out int n) => (double)n,
+                    JsonValue jv when targetType == typeof(float) && jv.TryGetValue(out double d) => (float)d,
+                    JsonValue jv => jv.ToString(),
+                    _ => node.ToString()
+                };
             }
         }
 

@@ -71,7 +71,7 @@ namespace dnSpy.MCP.Tools {
             return GetAttributes("method", method.FullName, attributeFilter);
         }
 
-        private static System.Collections.Generic.IEnumerable<CustomAttribute> ResolveAttributes(string targetType, string identifier) {
+        private static System.Collections.Generic.IEnumerable<CustomAttribute>? ResolveAttributes(string targetType, string identifier) {
             var resolver = DnSpyContext.Resolver;
 
             switch (targetType.ToLowerInvariant()) {
