@@ -31,14 +31,14 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $content = Get-Content "src/dnSpy.MCP/Mcp/McpServerHost.cs" -Raw
-          if ($content -match '\["version"\]\s*=\s*"(\d+\.\d+\.\d+)"') {
+          $content = Get-Content "src/dnSpy.MCP/dnSpy.MCP.csproj" -Raw
+          if ($content -match '<Version>(\d+\.\d+\.\d+)</Version>') {
             $version = $Matches[1]
             "version=$version" >> $env:GITHUB_OUTPUT
             "tag=v$version" >> $env:GITHUB_OUTPUT
             Write-Host "Detected version: $version"
           } else {
-            Write-Host "##[error]Could not find version in McpServerHost.cs"
+            Write-Host "##[error]Could not find <Version> in dnSpy.MCP.csproj"
             exit 1
           }
 
