@@ -77,10 +77,22 @@ namespace dnSpy.MCP.Mcp {
                     var p = methodParams[i];
                     var paramName = p.Name ?? "arg";
 
-                    if (arguments != null && arguments.TryGetPropertyValue(paramName, out var node)) {
+                    JsonNode? node = null;
+                    if (arguments != null) {
+                        if (!arguments.TryGetPropertyValue(paramName, out node)) {
+                            // Fallback: try snake_case when camelCase not found
+                            var snakeName = ToSnakeCase(paramName);
+                            arguments.TryGetPropertyValue(snakeName, out node);
+                        }
+                    }
+
+                    if (node != null) {
                         callArgs[i] = ConvertJsonValue(node, p.ParameterType, paramName);
                     }
-                    else if (!p.HasDefaultValue) {
+                    else if (p.HasDefaultValue) {
+                        callArgs[i] = p.DefaultValue;
+                    }
+                    else {
                         throw new ArgumentException($"Missing required parameter: '{paramName}'");
                     }
                 }
