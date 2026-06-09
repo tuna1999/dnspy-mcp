@@ -43,9 +43,13 @@ dnspy_mcp/
 │   ├── Mcp/
 │   │   ├── McpServerHost.cs  # TcpListener + JSON-RPC 2.0 dispatch
 │   │   ├── ToolRegistry.cs   # Reflection-based tool discovery
-│   │   ├── McpLogger.cs     # File + Output Window logging
-│   │   └── McpServerOptions.cs
-│   ├── Tools/                # 14 tool classes, 36 tools
+│   │   └── McpLogger.cs     # File + Output Window logging
+│   ├── Settings/             # dnSpy Options integration
+│   │   ├── McpSettings.cs           # Port, host, auth, timeout, etc.
+│   │   ├── McpSettingsPage.cs       # Options dialog integration
+│   │   ├── McpSettingsControl.xaml  # Settings UI
+│   │   └── McpSettingsControl.xaml.cs
+│   ├── Tools/                # 14 tool classes, 38 tools
 │   │   ├── IlDisplayTools.cs # IL opcode formatting (read-only)
 │   │   ├── IlPatchTools.cs   # IL patching via Roslyn compilation
 │   └── Helpers/
@@ -66,7 +70,7 @@ dnSpy starts
   → MEF discovers dnSpy.MCP.x.dll
   → TheExtension constructor: [Import] gets services
   → OnEvent(ExtensionEvent.AppLoaded): DnSpyContext.Initialize(...) + EnsureOutputPane()
-  → User clicks Start → HttpListener starts on :5150
+  → User clicks Start (or AutoStart=true in Settings) → HttpListener starts
 ```
 
 Server starts on **manual click** (not at launch) so `EnsureOutputPane()` runs on a fully initialized WPF UI thread.
@@ -108,9 +112,18 @@ Do NOT duplicate this logic — call `DnSpyContext.Resolver.ResolveMethodFlexibl
 
 ### Assembly Scoping
 dnSpy can open multiple binaries simultaneously. To avoid ambiguous results:
+- **`load_assembly`** — load a DLL/EXE into dnSpy programmatically (no manual UI step).
+- **`close_assembly`** — unload an assembly by name.
 - **`list_loaded_assemblies`** — always call first to know which binaries are loaded.
 - **`assembly` parameter** — search tools (`search_types`, `search_methods`, `search_strings`, `grep`, `search_constants`, `get_xrefs_to`) accept an optional `assembly` parameter to scope results to a specific binary. When omitted, all loaded assemblies are searched.
 - **Resolve tools** (`decompile_*`, `get_type_members`, `get_fields`, `get_properties`, `get_attributes`, `get_enum_values`) resolve by name across all assemblies — use `list_loaded_assemblies` first to verify context if multiple binaries are loaded.
+
+### Batch Processing
+JSON-RPC batch requests (arrays) are processed **in parallel** — all requests in a batch fire concurrently and results are collected in order. This enables efficient batch analysis pipelines:
+```
+POST /  [{"method":"tools/call","params":{"name":"load_assembly","arguments":{"path":"D:\\bin\\A.dll"}},...},
+         {"method":"tools/call","params":{"name":"load_assembly","arguments":{"path":"D:\\bin\\B.dll"}},...}]
+```
 
 ### Server Hardening
 `McpServerHost` has these protections:
@@ -119,6 +132,7 @@ dnSpy can open multiple binaries simultaneously. To avoid ambiguous results:
 - **`volatile _running`**: thread-safe flag, set after listener starts
 - **Roslyn sandbox**: `BuildRoslynReferences()` loads only 5 core BCL assemblies (not full TPA)
 - **Compilation timeout**: 10 seconds max via `Task.Run().WaitAsync()`
+- **Tool execution timeout**: configurable via `ToolTimeoutSeconds` (default 30s)
 
 ### WPF Thread Safety
 MCP tools run on **background threads** (HttpListener thread pool). All WPF TreeView/UI access must marshal to the UI thread:
@@ -133,6 +147,13 @@ if (dispatcher?.CheckAccess() == false)
 
 `TreeViewTools.RunOnUIThread()` provides reusable helpers. Metadata mutation tools (rename, patch) auto-refresh tree view internally.
 
+### Server Endpoints & Auth
+- **Health check**: `GET /health` or `GET /ping` — returns JSON with status, uptime, tools count
+- **JSON-RPC**: `POST /` — all MCP tool calls go here
+- **Auth**: When `RequireAuth=true`, requests must include `Authorization: Bearer <ApiToken>` header
+- **Tool timeout**: Each tool call has a configurable timeout (default 30s via `ToolTimeoutSeconds`)
+- **Configurable host/port**: Defaults to `127.0.0.1:5150`, configurable in dnSpy Options
+
 ## Tool Invocation Flow
 
 ```
@@ -144,7 +165,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
           → decompilerService.Decompiler.Decompile(method, output, new DecompilationContext())
 ```
 
-## Available MCP Tools (36)
+## Available MCP Tools (38)
 
 ### Decompiler
 | Tool | Description |
@@ -180,6 +201,8 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 ### Assembly
 | Tool | Description |
 |------|-------------|
+| `load_assembly` | Load a DLL/EXE into dnSpy by absolute path |
+| `close_assembly` | Unload an assembly by name |
 | `list_loaded_assemblies` | List all binaries loaded in dnSpy |
 | `assembly_overview` | Module/assembly summary, type counts |
 | `assembly_list_namespaces` | All namespaces in loaded assembly |
