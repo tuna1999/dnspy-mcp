@@ -93,9 +93,10 @@ namespace dnSpy.MCP.Mcp
                 using var stream = client.GetStream();
                 stream.ReadTimeout = 30_000;
                 stream.WriteTimeout = 30_000;
+                var reader = new BufferedLineReader(stream);
 
                 // Read request line: "POST / HTTP/1.1\r\n"
-                var requestLine = await ReadLineAsync(stream);
+                var requestLine = await reader.ReadLineAsync();
                 if (requestLine == null) return;
 
                 var spaceIdx = requestLine.IndexOf(' ');
@@ -105,7 +106,7 @@ namespace dnSpy.MCP.Mcp
                 // Read headers
                 var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 string? headerLine;
-                while ((headerLine = await ReadLineAsync(stream)) != null && headerLine.Length > 0)
+                while ((headerLine = await reader.ReadLineAsync()) != null && headerLine.Length > 0)
                 {
                     var colonIdx = headerLine.IndexOf(':');
                     if (colonIdx > 0)
@@ -172,7 +173,7 @@ namespace dnSpy.MCP.Mcp
                 if (contentLength > 0)
                 {
                     var buffer = new byte[contentLength];
-                    await stream.ReadExactlyAsync(buffer, 0, contentLength);
+                    await reader.ReadExactlyAsync(buffer, 0, contentLength);
                     body = Encoding.UTF8.GetString(buffer);
                 }
                 else
@@ -286,37 +287,70 @@ namespace dnSpy.MCP.Mcp
             }
         }
 
-        private static async Task<string?> ReadLineAsync(Stream stream)
+        /// <summary>
+        /// Buffered reader that preserves unconsumed bytes across calls.
+        /// Fixes the bug where a 256-byte buffer consumed data beyond headers
+        /// into the body, then that buffered body data was discarded.
+        /// </summary>
+        private sealed class BufferedLineReader
         {
-            var sb = new StringBuilder(128);
-            var buf = new byte[256];
-            int bufPos = 0, bufLen = 0;
+            private readonly Stream _stream;
+            private readonly byte[] _buf = new byte[4096];
+            private int _bufPos, _bufLen;
 
-            while (true)
+            public BufferedLineReader(Stream stream) => _stream = stream;
+
+            public async Task<string?> ReadLineAsync()
             {
-                if (bufPos >= bufLen)
+                var sb = new StringBuilder(256);
+
+                while (true)
                 {
-                    bufLen = await stream.ReadAsync(buf, 0, buf.Length);
-                    if (bufLen == 0) return sb.Length > 0 ? sb.ToString() : null;
-                    bufPos = 0;
+                    if (_bufPos >= _bufLen)
+                    {
+                        _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length);
+                        if (_bufLen == 0) return sb.Length > 0 ? sb.ToString() : null;
+                        _bufPos = 0;
+                    }
+
+                    var b = _buf[_bufPos++];
+                    if (b == '\r')
+                    {
+                        // consume \n after \r
+                        if (_bufPos >= _bufLen)
+                        {
+                            _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length);
+                            _bufPos = 0;
+                        }
+                        if (_bufLen > 0 && _buf[_bufPos] == '\n') _bufPos++;
+                        break;
+                    }
+                    if (b == '\n') break;
+                    sb.Append((char)b);
+                }
+                return sb.ToString();
+            }
+
+            /// <summary>
+            /// Reads exactly <paramref name="count"/> bytes, draining the internal
+            /// buffer first before reading from the underlying stream.
+            /// </summary>
+            public async Task ReadExactlyAsync(byte[] dest, int offset, int count)
+            {
+                // Drain buffered bytes first
+                var buffered = Math.Min(count, _bufLen - _bufPos);
+                if (buffered > 0)
+                {
+                    Array.Copy(_buf, _bufPos, dest, offset, buffered);
+                    _bufPos += buffered;
+                    offset += buffered;
+                    count -= buffered;
                 }
 
-                var b = buf[bufPos++];
-                if (b == '\r')
-                {
-                    // consume \n after \r
-                    if (bufPos >= bufLen)
-                    {
-                        bufLen = await stream.ReadAsync(buf, 0, buf.Length);
-                        bufPos = 0;
-                    }
-                    if (bufLen > 0 && buf[bufPos] == '\n') bufPos++;
-                    break;
-                }
-                if (b == '\n') break;
-                sb.Append((char)b);
+                // Read remaining directly from stream
+                if (count > 0)
+                    await _stream.ReadAtLeastAsync(new Memory<byte>(dest, offset, count), count, throwOnEndOfStream: true);
             }
-            return sb.ToString();
         }
 
         private async Task WriteJsonResponseAsync(Stream stream, int statusCode, object data)
