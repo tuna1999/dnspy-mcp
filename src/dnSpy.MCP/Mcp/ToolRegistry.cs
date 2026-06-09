@@ -76,15 +76,7 @@ namespace dnSpy.MCP.Mcp {
                 for (int i = 0; i < methodParams.Length; i++) {
                     var p = methodParams[i];
                     var paramName = p.Name ?? "arg";
-
-                    JsonNode? node = null;
-                    if (arguments != null) {
-                        if (!arguments.TryGetPropertyValue(paramName, out node)) {
-                            // Fallback: try snake_case when camelCase not found
-                            var snakeName = ToSnakeCase(paramName);
-                            arguments.TryGetPropertyValue(snakeName, out node);
-                        }
-                    }
+                    var node = ResolveArgument(arguments, paramName);
 
                     if (node != null) {
                         callArgs[i] = ConvertJsonValue(node, p.ParameterType, paramName);
@@ -93,6 +85,7 @@ namespace dnSpy.MCP.Mcp {
                         callArgs[i] = p.DefaultValue;
                     }
                     else {
+                        McpLogger.Warn($"[ARGS] Missing required param '{paramName}', received: {arguments?.ToJsonString() ?? "null"}");
                         throw new ArgumentException($"Missing required parameter: '{paramName}'");
                     }
                 }
@@ -100,6 +93,54 @@ namespace dnSpy.MCP.Mcp {
                 var result = Method.Invoke(null, callArgs);
                 return result?.ToString() ?? "";
             }
+
+            /// <summary>
+            /// Resolve argument by trying exact name, snake_case, and type-based semantic aliases.
+            /// Claude Code may send different argument names than the C# parameter names.
+            /// </summary>
+            private static JsonNode? ResolveArgument(JsonObject? arguments, string paramName) {
+                if (arguments == null) return null;
+
+                // 1. Exact match
+                if (arguments.TryGetPropertyValue(paramName, out var node))
+                    return node;
+
+                // 2. Snake_case match
+                var snakeName = ToSnakeCase(paramName);
+                if (arguments.TryGetPropertyValue(snakeName, out node))
+                    return node;
+
+                // 3. Semantic aliases — Claude Code often uses these instead of code parameter names
+                var aliases = GetAliases(paramName);
+                foreach (var alias in aliases) {
+                    if (arguments.TryGetPropertyValue(alias, out node))
+                        return node;
+                }
+
+                return null;
+            }
+
+            private static string[] GetAliases(string paramName) => paramName switch {
+                // Type identification
+                "typeFullname" or "typeFullName" => new[] { "typeName", "type_name", "type", "fullTypeName", "type_fullname", "type_full_name" },
+                // Method identification
+                "methodFullname" or "methodFullnameOrToken" => new[] { "methodName", "method_name", "method", "methodIdentifier", "method_identifier" },
+                // Assembly scoping
+                "assemblyName" => new[] { "assembly", "assembly_name", "module", "moduleName" },
+                // Attribute target
+                "targetType" => new[] { "target", "scope", "type" },
+                // Search patterns
+                "pattern" or "namePattern" => new[] { "regex", "filter", "name", "query", "search" },
+                // Names
+                "newName" => new[] { "new_name", "name", "renamedName" },
+                // Resource
+                "resourceName" => new[] { "resource", "resource_name", "name" },
+                // Namespace
+                "namespaceName" => new[] { "namespace", "namespace_name", "ns" },
+                // Method body
+                "csharpStatements" => new[] { "code", "statements", "patch", "csharp" },
+                _ => Array.Empty<string>()
+            };
 
             private static object? ConvertJsonValue(JsonNode? node, Type targetType, string paramName) {
                 if (node == null) return null;
