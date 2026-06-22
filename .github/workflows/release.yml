@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  DNSPY_TAG: "v6.6.0-rc1"
+  DNSPY_TAG: "v6.6.0"
   DNSPY_REPO: "dnSpyEx/dnSpy"
 
 permissions:
@@ -67,10 +67,10 @@ jobs:
       matrix:
         include:
           - arch: x64
-            asset_pattern: 'net10\.0.*win.*x64.*\.zip'
+            asset_pattern: 'dnSpy-net.*win64.*\.zip'
             asset_fallback: "dnSpy-net-win64.zip"
           - arch: x86
-            asset_pattern: 'net10\.0.*win.*x86.*\.zip'
+            asset_pattern: 'dnSpy-net.*win32.*\.zip'
             asset_fallback: "dnSpy-net-win32.zip"
 
     steps:
