@@ -6,6 +6,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -26,6 +27,21 @@ namespace dnSpy.MCP.Mcp
         private readonly Stopwatch _uptime = Stopwatch.StartNew();
         private int _activeConnections;
         private readonly TaskCompletionSource _stoppedTcs = new();
+
+        /// <summary>
+        /// Auth config snapshot taken at StartAsync. Auth must stay stable while the server
+        /// runs — reading the mutable <see cref="McpSettings.ApiToken"/> per-request would let
+        /// an in-flight settings edit (debounced 500ms save) race the comparison.
+        /// </summary>
+        private bool _authRequired;
+        private byte[]? _authExpectedToken;
+
+        /// <summary>
+        /// Exclusive lock held by destructive tools (update_method_body, rename_*).
+        /// dnlib ModuleDef metadata is not safe for concurrent writers, and MCP batches are
+        /// processed in parallel — mutations must serialize to avoid corrupted metadata.
+        /// </summary>
+        private static readonly SemaphoreSlim _mutationLock = new(1, 1);
 
         public bool IsRunning => _running;
 
@@ -56,9 +72,17 @@ namespace dnSpy.MCP.Mcp
 
             _running = true;
 
-            // Warn if auth is enabled but token is empty
-            if (_settings.RequireAuth && string.IsNullOrEmpty(_settings.ApiToken))
-                McpLogger.Warn("Auth enabled but ApiToken is empty — authentication is DISABLED");
+            // Snapshot auth config so it stays stable for the server's lifetime. Reload requires restart.
+            _authRequired = _settings.RequireAuth;
+            _authExpectedToken = _authRequired && !string.IsNullOrEmpty(_settings.ApiToken)
+                ? Encoding.UTF8.GetBytes("Bearer " + _settings.ApiToken)
+                : null;
+
+            // Fail-closed: if auth is requested but no token is configured, we CANNOT serve
+            // requests safely — refuse to start instead of silently disabling protection.
+            if (_authRequired && _authExpectedToken == null)
+                throw new InvalidOperationException(
+                    "RequireAuth is enabled but ApiToken is empty. Set a token in MCP Settings or disable RequireAuth.");
 
             _ = Task.Run(() => ListenAsync(_cts.Token));
         }
@@ -73,7 +97,7 @@ namespace dnSpy.MCP.Mcp
                     await _concurrency.WaitAsync(ct);
                     Interlocked.Increment(ref _activeConnections);
                     _ = Task.Run(async () => {
-                        try { await HandleConnection(client); }
+                        try { await HandleConnection(client, _cts.Token); }
                         finally { _concurrency.Release(); client.Dispose(); }
                     }).ContinueWith(_ => {
                         if (Interlocked.Decrement(ref _activeConnections) == 0 && !_running)
@@ -86,7 +110,7 @@ namespace dnSpy.MCP.Mcp
             }
         }
 
-        private async Task HandleConnection(TcpClient client)
+        private async Task HandleConnection(TcpClient client, CancellationToken ct)
         {
             try
             {
@@ -96,7 +120,7 @@ namespace dnSpy.MCP.Mcp
                 var reader = new BufferedLineReader(stream);
 
                 // Read request line: "POST / HTTP/1.1\r\n"
-                var requestLine = await reader.ReadLineAsync();
+                var requestLine = await reader.ReadLineAsync(ct);
                 if (requestLine == null) return;
 
                 var spaceIdx = requestLine.IndexOf(' ');
@@ -106,7 +130,7 @@ namespace dnSpy.MCP.Mcp
                 // Read headers
                 var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 string? headerLine;
-                while ((headerLine = await reader.ReadLineAsync()) != null && headerLine.Length > 0)
+                while ((headerLine = await reader.ReadLineAsync(ct)) != null && headerLine.Length > 0)
                 {
                     var colonIdx = headerLine.IndexOf(':');
                     if (colonIdx > 0)
@@ -135,18 +159,26 @@ namespace dnSpy.MCP.Mcp
                 // CORS preflight
                 if (method == "OPTIONS")
                 {
-                    await WriteResponseAsync(stream, 204, "No Content", null,
-                        ("Access-Control-Allow-Origin", _settings.AllowedOrigins),
+                    var preflightHeaders = new List<(string, string)> {
                         ("Access-Control-Allow-Methods", "POST, OPTIONS"),
-                        ("Access-Control-Allow-Headers", "Content-Type"));
+                        ("Access-Control-Allow-Headers", "Content-Type"),
+                    };
+                    if (!string.IsNullOrWhiteSpace(_settings.AllowedOrigins))
+                        preflightHeaders.Insert(0, ("Access-Control-Allow-Origin", _settings.AllowedOrigins));
+                    await WriteResponseAsync(stream, 204, "No Content", null, preflightHeaders.ToArray());
                     return;
                 }
 
-                // Auth check
-                if (_settings.RequireAuth && !string.IsNullOrEmpty(_settings.ApiToken))
+                // Auth check (fail-closed: snapshot taken at StartAsync).
+                // Constant-time compare to avoid leaking token length/prefix via timing.
+                if (_authRequired)
                 {
                     headers.TryGetValue("Authorization", out var auth);
-                    if (auth != $"Bearer {_settings.ApiToken}")
+                    var provided = auth is null ? null : Encoding.UTF8.GetBytes(auth);
+                    var authorized = provided != null && _authExpectedToken != null
+                        && provided.Length == _authExpectedToken.Length
+                        && CryptographicOperations.FixedTimeEquals(provided, _authExpectedToken);
+                    if (!authorized)
                     {
                         await WriteJsonResponseAsync(stream, 401, new { error = "Unauthorized" });
                         return;
@@ -173,7 +205,7 @@ namespace dnSpy.MCP.Mcp
                 if (contentLength > 0)
                 {
                     var buffer = new byte[contentLength];
-                    await reader.ReadExactlyAsync(buffer, 0, contentLength);
+                    await reader.ReadExactlyAsync(buffer, 0, contentLength, ct);
                     body = Encoding.UTF8.GetString(buffer);
                 }
                 else
@@ -300,7 +332,7 @@ namespace dnSpy.MCP.Mcp
 
             public BufferedLineReader(Stream stream) => _stream = stream;
 
-            public async Task<string?> ReadLineAsync()
+            public async Task<string?> ReadLineAsync(CancellationToken ct = default)
             {
                 var sb = new StringBuilder(256);
 
@@ -308,7 +340,7 @@ namespace dnSpy.MCP.Mcp
                 {
                     if (_bufPos >= _bufLen)
                     {
-                        _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length);
+                        _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length, ct);
                         if (_bufLen == 0) return sb.Length > 0 ? sb.ToString() : null;
                         _bufPos = 0;
                     }
@@ -319,7 +351,7 @@ namespace dnSpy.MCP.Mcp
                         // consume \n after \r
                         if (_bufPos >= _bufLen)
                         {
-                            _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length);
+                            _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length, ct);
                             _bufPos = 0;
                         }
                         if (_bufLen > 0 && _buf[_bufPos] == '\n') _bufPos++;
@@ -335,7 +367,7 @@ namespace dnSpy.MCP.Mcp
             /// Reads exactly <paramref name="count"/> bytes, draining the internal
             /// buffer first before reading from the underlying stream.
             /// </summary>
-            public async Task ReadExactlyAsync(byte[] dest, int offset, int count)
+            public async Task ReadExactlyAsync(byte[] dest, int offset, int count, CancellationToken ct = default)
             {
                 // Drain buffered bytes first
                 var buffered = Math.Min(count, _bufLen - _bufPos);
@@ -349,7 +381,7 @@ namespace dnSpy.MCP.Mcp
 
                 // Read remaining directly from stream
                 if (count > 0)
-                    await _stream.ReadAtLeastAsync(new Memory<byte>(dest, offset, count), count, throwOnEndOfStream: true);
+                    await _stream.ReadAtLeastAsync(new Memory<byte>(dest, offset, count), count, cancellationToken: ct, throwOnEndOfStream: true);
             }
         }
 
@@ -362,7 +394,10 @@ namespace dnSpy.MCP.Mcp
             sb.Append($"HTTP/1.1 {statusCode} {GetReasonPhrase(statusCode)}\r\n");
             sb.Append("Content-Type: application/json\r\n");
             sb.Append($"Content-Length: {body.Length}\r\n");
-            sb.Append($"Access-Control-Allow-Origin: {_settings.AllowedOrigins}\r\n");
+            // Omit CORS header entirely when no origins are configured — emitting an empty
+            // ACAO would be equivalent to allowing nobody, but a missing header is unambiguous.
+            if (!string.IsNullOrWhiteSpace(_settings.AllowedOrigins))
+                sb.Append($"Access-Control-Allow-Origin: {_settings.AllowedOrigins}\r\n");
             sb.Append("\r\n");
 
             var header = Encoding.UTF8.GetBytes(sb.ToString());
@@ -415,21 +450,37 @@ namespace dnSpy.MCP.Mcp
             try
             {
                 var timeout = TimeSpan.FromSeconds(_settings.ToolTimeoutSeconds);
-                var result = await Task.Run(() => tool.Invoke(arguments)).WaitAsync(timeout);
 
-                var content = new JsonArray
+                // Destructive tools (patch/rename) must run under the mutation lock so concurrent
+                // batch requests can't race on dnlib metadata. Read-only tools stay fully parallel.
+                SemaphoreSlim? heldLock = null;
+                if (tool.IsMutation)
                 {
-                    new JsonObject
+                    await _mutationLock.WaitAsync(timeout);
+                    heldLock = _mutationLock; // assigned only after successful acquire
+                }
+                try
+                {
+                    var result = await Task.Run(() => tool.Invoke(arguments)).WaitAsync(timeout);
+
+                    var content = new JsonArray
                     {
-                        ["type"] = "text",
-                        ["text"] = result
-                    }
-                };
+                        new JsonObject
+                        {
+                            ["type"] = "text",
+                            ["text"] = result
+                        }
+                    };
 
-                return CreateResponse(request["id"], new JsonObject
+                    return CreateResponse(request["id"], new JsonObject
+                    {
+                        ["content"] = content
+                    });
+                }
+                finally
                 {
-                    ["content"] = content
-                });
+                    heldLock?.Release();
+                }
             }
             catch (TimeoutException)
             {
@@ -498,18 +549,23 @@ namespace dnSpy.MCP.Mcp
             _listener?.Stop();
             _listener = null;
 
-            // Wait for in-flight requests to complete (max 10 seconds)
+            // Best-effort graceful drain. Stop() may be called on the UI thread (menu command),
+            // so we must NOT sync-block on it — that would freeze dnSpy. Fire-and-forget a short
+            // grace window; in-flight connections self-close via their own finally/Dispose.
             if (_activeConnections > 0)
             {
-                try
-                {
-                    _stoppedTcs.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-                }
-                catch (TimeoutException)
-                {
-                    McpLogger.Warn("Shutdown timeout: some connections were not closed gracefully");
-                }
-                catch (OperationCanceledException) { }
+                _ = Task.Run(async () => {
+                    try
+                    {
+                        await _stoppedTcs.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                        McpLogger.Info("Server stopped (all connections drained)");
+                    }
+                    catch (TimeoutException)
+                    {
+                        McpLogger.Warn("Shutdown grace (3s) elapsed: some connections were not closed gracefully");
+                    }
+                    catch (OperationCanceledException) { }
+                });
             }
 
             McpLogger.Info("Server stopped");

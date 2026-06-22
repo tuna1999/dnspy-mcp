@@ -28,6 +28,8 @@ Options: `-Clean`, `-Deploy`, `-DeployDir <path>`, `-Configuration <Debug|Releas
 ### CI
 GitHub Actions (`build.yml`) auto-downloads dnSpy deps and runs `dotnet build -c Release`. No manual setup needed.
 
+**Tool-count guard**: after adding/removing a tool, run `pwsh scripts/verify-tool-count.ps1`. It cross-checks the count discovered by the same reflection rules `ToolRegistry` uses against the `## Available MCP Tools (NN)` header here — fails on drift so docs and code can't silently diverge.
+
 ### Build output
 - **Release DLL**: `src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll`
 - **Deploy to dnSpy**: copy `dnSpy.MCP.x.dll`, `.deps.json`, `.pdb` (optional) to `<dnSpy>/bin/Extensions/`
@@ -130,7 +132,10 @@ POST /  [{"method":"tools/call","params":{"name":"load_assembly","arguments":{"p
 - **Request body limit**: 1MB max (`ContentLength64` check)
 - **Concurrency limit**: `SemaphoreSlim(4)` — max 4 simultaneous requests
 - **`volatile _running`**: thread-safe flag, set after listener starts
-- **Roslyn sandbox**: `BuildRoslynReferences()` loads only 5 core BCL assemblies (not full TPA)
+- **Auth fail-closed**: if `RequireAuth=true` but `ApiToken` is empty, the server refuses to start (`InvalidOperationException`). Auth config is snapshotted at `StartAsync` so in-flight settings edits can't race the comparison. Token compared with `CryptographicOperations.FixedTimeEquals` (constant-time, no timing leak).
+- **Mutation serialization**: destructive tools (`update_method_body`, `rename_*`) run under an exclusive `_mutationLock` so parallel batch requests can't race on dnlib metadata. Tool mutated-ness is detected by name prefix in `ToolRegistry.IsMutationTool`.
+- **Non-blocking shutdown**: `Stop()` fire-and-forgets a short (3s) graceful drain so it never freezes the dnSpy UI thread.
+- **Roslyn sandbox**: `BuildRoslynReferences()` loads only 5 core BCL assemblies (not full TPA). The target assembly is added as a `MetadataReference` so patch bodies can call its members — see the trust-boundary comment in `CompilePatch`.
 - **Compilation timeout**: 10 seconds max via `Task.Run().WaitAsync()`
 - **Tool execution timeout**: configurable via `ToolTimeoutSeconds` (default 30s)
 
@@ -190,7 +195,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 | `get_method_signatures` | Method metadata: params, return, flags, generics |
 | `get_type_hierarchy` | Inheritance chain, interfaces, member counts |
 | `get_method_body` | IL bytes with MaxStack/InitLocals info |
-| `update_method_body` | Patch method IL using C# statements (dry-run by default, `IlPatchTools`) |
+| `update_method_body` | Patch method IL using C# statements (dry-run by default, optional `assemblyName` scope, `IlPatchTools`) |
 
 ### Cross-References
 | Tool | Description |

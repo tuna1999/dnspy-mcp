@@ -19,11 +19,12 @@ namespace dnSpy.MCP.Tools {
     }
 
     public static class IlPatchTools {
-        [Description("Patch method body using C# statements. By default dryRun=true. Example methodBody: Console.WriteLine(\"patched\"); return 1;")]
+        [Description("Patch method body using C# statements. By default dryRun=true. Pass assemblyName when multiple binaries are loaded to avoid patching the wrong one. Example methodBody: Console.WriteLine(\"patched\"); return 1;")]
         public static string UpdateMethodBody(
             [Description("Method identifier: full name, token, or partial name")] string methodFullnameOrToken,
             [Description("C# statements for method body only")] string methodBody,
-            [Description("If true, only validates and previews without modifying IL")] bool dryRun = true) {
+            [Description("If true, only validates and previews without modifying IL")] bool dryRun = true,
+            [Description("Optional assembly simple name to scope resolution when multiple binaries are loaded")] string? assemblyName = null) {
 
             var documentService = DnSpyContext.DocumentService;
             if (documentService == null)
@@ -32,9 +33,9 @@ namespace dnSpy.MCP.Tools {
             if (string.IsNullOrWhiteSpace(methodBody))
                 return "Error: methodBody is required.";
 
-            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullnameOrToken);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullnameOrToken, assemblyName);
             if (method == null)
-                return $"Method not found: {methodFullnameOrToken}";
+                return $"Method not found: {methodFullnameOrToken}{(string.IsNullOrEmpty(assemblyName) ? "" : $" in assembly '{assemblyName}'")}";
 
             if (method.Body == null)
                 return $"Method has no body: {method.FullName}";
@@ -132,14 +133,6 @@ namespace dnSpy.MCP.Tools {
             return NormalizeMetadataTypeName(fullName);
         }
 
-        private static string ToCSharpTypeName(string? fullName) {
-            if (string.IsNullOrEmpty(fullName))
-                return "object";
-            if (s_csharpTypeMap.TryGetValue(fullName, out var mapped))
-                return mapped;
-            return fullName.Replace('/', '.');
-        }
-
         private static string BuildPatchSource(MethodDef method, string methodBody) {
             var parameters = new List<string>();
 
@@ -233,6 +226,12 @@ namespace dnSpy.MCP.Tools {
 
             var references = BuildRoslynReferences();
             var targetModule = targetMethod.Module;
+            // Trust boundary: the target assembly is added as a MetadataReference so the patch
+            // body can call its members. This is required for a working patch, but it means a
+            // patch body can invoke ANY reachable method in the target assembly. Mitigations:
+            //   1. dryRun=true by default — compilation only, no IL is written until explicitly confirmed.
+            //   2. Pass assemblyName (UpdateMethodBody) to scope resolution and avoid patching the wrong binary.
+            //   3. Only 5 BCL assemblies are referenced (see BuildRoslynReferences) — not the full TPA.
             if (!string.IsNullOrWhiteSpace(targetModule?.Location) && File.Exists(targetModule.Location)) {
                 references.Add(MetadataReference.CreateFromFile(targetModule.Location));
             }

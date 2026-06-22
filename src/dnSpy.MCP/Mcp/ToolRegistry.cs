@@ -39,7 +39,10 @@ namespace dnSpy.MCP.Mcp {
                         Name = toolName,
                         Description = descAttr.Description,
                         Method = method,
-                        Parameters = parameters
+                        Parameters = parameters,
+                        // Destructive tools mutate dnlib metadata in-process; they must serialize
+                        // (see McpServerHost._mutationLock) so parallel batch requests can't race.
+                        IsMutation = IsMutationTool(toolName),
                     };
                 }
             }
@@ -68,6 +71,11 @@ namespace dnSpy.MCP.Mcp {
             public string Description { get; init; } = "";
             public MethodInfo Method { get; init; } = null!;
             public List<ToolParam> Parameters { get; init; } = new();
+            /// <summary>
+            /// True for destructive tools that mutate in-process metadata (patch/rename).
+            /// Such tools are serialized via McpServerHost._mutationLock to avoid races.
+            /// </summary>
+            public bool IsMutation { get; init; }
 
             public string Invoke(JsonObject? arguments) {
                 var methodParams = Method.GetParameters();
@@ -162,8 +170,14 @@ namespace dnSpy.MCP.Mcp {
                     JsonValue jv when targetType == typeof(double) && jv.TryGetValue(out double d) => d,
                     JsonValue jv when targetType == typeof(double) && jv.TryGetValue(out int n) => (double)n,
                     JsonValue jv when targetType == typeof(float) && jv.TryGetValue(out double d) => (float)d,
-                    JsonValue jv => jv.ToString(),
-                    _ => node.ToString()
+                    // No coercion fallback: a JSON value that doesn't match the declared parameter
+                    // type is a caller error. Fail with a clear message instead of silently passing
+                    // jv.ToString()/node.ToString() through to MethodInfo.Invoke, which would throw an
+                    // opaque "cannot convert" ArgumentException much later.
+                    JsonValue jv => throw new ArgumentException(
+                        $"Parameter '{paramName}' expects {targetType.Name} but received JSON value '{jv}'."),
+                    _ => throw new ArgumentException(
+                        $"Parameter '{paramName}' expects {targetType.Name} but received {node.GetPath()}.")
                 };
             }
         }
@@ -184,6 +198,21 @@ namespace dnSpy.MCP.Mcp {
                 sb.Append(char.ToLowerInvariant(c));
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Destructive tools that mutate in-process dnlib metadata. These are serialized by
+        /// McpServerHost so parallel batch requests can't race on shared ModuleDef state.
+        /// Convention: any tool whose name starts with a mutation prefix is treated as destructive.
+        /// </summary>
+        private static readonly string[] s_mutationPrefixes = { "update_", "rename_", "patch_" };
+
+        private static bool IsMutationTool(string toolName) {
+            foreach (var prefix in s_mutationPrefixes) {
+                if (toolName.StartsWith(prefix, StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
         }
 
         private static string MapType(Type t) {

@@ -38,8 +38,8 @@
                     <CheckBox Content="Require API token for authentication"
                               IsChecked="{Binding RequireAuth}" Margin="0,0,0,4" />
                     <TextBlock Text="API Token:" Margin="0,4,0,2" />
-                    <TextBox Text="{Binding ApiToken}"
-                             Visibility="{Binding RequireAuth, Converter={StaticResource BoolToVis}}" />
+                    <PasswordBox x:Name="ApiTokenBox"
+                                 Visibility="{Binding RequireAuth, Converter={StaticResource BoolToVis}}" />
                     <TextBlock Text="Allowed CORS Origins:" Margin="0,8,0,2" />
                     <TextBox Text="{Binding AllowedOrigins}" />
                 </StackPanel>
