@@ -565,8 +565,10 @@ namespace dnSpy.MCP.Mcp
                         McpLogger.Warn("Shutdown grace (3s) elapsed: some connections were not closed gracefully");
                     }
                     // Cancellation is expected here: it means the server is shutting down
-                    // and the drain task is being torn down. Nothing to warn about.
-                    catch (OperationCanceledException) { }
+                    // and the drain task is being torn down. Traced at debug level only.
+                    catch (OperationCanceledException ex) {
+                        System.Diagnostics.Debug.WriteLine($"MCP [SHUTDOWN]: drain task cancelled — {ex.Message}");
+                    }
                 });
             }
 

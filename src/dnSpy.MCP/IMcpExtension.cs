@@ -1,5 +1,3 @@
-using System;
-
 namespace dnSpy.MCP {
     /// <summary>
     /// Minimal contract exposed by the MCP extension entry point.
