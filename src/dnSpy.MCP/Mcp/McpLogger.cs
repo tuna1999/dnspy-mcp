@@ -87,14 +87,19 @@ namespace dnSpy.MCP.Mcp {
                 var app = System.Windows.Application.Current;
                 if (app?.Dispatcher.CheckAccess() == false) {
                     app.Dispatcher.InvokeAsync(() => {
-                        try { pane.WriteLine(color, text); } catch { }
+                        try { pane.WriteLine(color, text); }
+                        catch (Exception ex) {
+                            System.Diagnostics.Debug.WriteLine($"MCP [OUTPUT ERROR]: {ex.Message}");
+                        }
                     });
                 }
                 else {
                     pane.WriteLine(color, text);
                 }
             }
-            catch { }
+            catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"MCP [OUTPUT ERROR]: {ex.Message}");
+            }
         }
 
         public static string GetRecentLogs(int count = 50) {
@@ -129,7 +134,9 @@ namespace dnSpy.MCP.Mcp {
                 var pane = DnSpyContext.OutputPane;
                 pane?.Clear();
             }
-            catch { }
+            catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"MCP [CLEAR ERROR]: {ex.Message}");
+            }
         }
     }
 }

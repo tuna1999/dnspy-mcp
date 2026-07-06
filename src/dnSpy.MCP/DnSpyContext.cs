@@ -18,7 +18,7 @@ namespace dnSpy.MCP {
     public static class DnSpyContext {
         internal static IDsDocumentService? DocumentService { get; private set; }
         internal static IDecompilerService? DecompilerService { get; private set; }
-        internal static TheExtension? Extension { get; set; }
+        internal static IMcpExtension? Extension { get; set; }
 
         static IOutputService? _outputService;
         static IOutputTextPane? _outputPane;

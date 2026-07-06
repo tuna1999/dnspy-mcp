@@ -61,3 +61,9 @@ Thumbs.db
 # NuGet fallback
 *.nupkg
 .nuget/
+
+# Desloppify (local state — scores, plan, review packets)
+.desloppify/
+
+# Desloppify scorecard (generated artifact, disabled in config)
+scorecard.png

@@ -187,8 +187,10 @@ namespace dnSpy.MCP.Tools {
                                 types.Add(fullName);
                             }
                         }
-                        catch (System.Text.RegularExpressions.RegexMatchTimeoutException) {
-                            // treat timeout as no-match
+                        catch (System.Text.RegularExpressions.RegexMatchTimeoutException ex) {
+                            // Regex too expensive on this type name; treat as no-match
+                            // but trace it so pathological patterns are diagnosable.
+                            McpLogger.Warn($"Regex timeout matching '{fullName}' against pattern '{pattern}': {ex.Message}");
                         }
                     }
                 }

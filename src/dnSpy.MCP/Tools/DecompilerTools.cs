@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.MCP.Helpers;
+using dnSpy.MCP.Mcp;
 
 namespace dnSpy.MCP.Tools {
     public static class DecompilerTools {
@@ -73,7 +74,12 @@ namespace dnSpy.MCP.Tools {
                             break;
                         }
                     }
-                    catch { }
+                    catch (Exception ex) {
+                        // Some types (compiler-generated async state machines,
+                        // anonymous types, etc.) fail to decompile cleanly.
+                        // Skip them so the overview still returns useful output.
+                        McpLogger.Warn($"Skipped type '{type.FullName}' during assembly overview: {ex.Message}");
+                    }
                 }
                 if (count > 10) break;
             }

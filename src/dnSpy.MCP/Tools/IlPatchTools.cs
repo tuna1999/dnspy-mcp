@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnSpy.MCP.Helpers;
+using dnSpy.MCP.Mcp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
@@ -213,7 +214,13 @@ namespace dnSpy.MCP.Tools {
             };
 
             foreach (var asm in coreAssemblies) {
-                try { TryAdd(asm.Location); } catch { }
+                try { TryAdd(asm.Location); }
+                catch (Exception ex) {
+                    // Best-effort: if a core BCL assembly can't be added as a
+                    // MetadataReference (e.g. in-memory or path issues), skip it
+                    // rather than abort the whole Roslyn reference set.
+                    McpLogger.Warn($"Could not add core assembly reference '{asm.Location}': {ex.Message}");
+                }
             }
 
             return refs;

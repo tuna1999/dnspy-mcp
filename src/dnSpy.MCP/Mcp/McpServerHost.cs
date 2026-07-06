@@ -221,7 +221,7 @@ namespace dnSpy.MCP.Mcp
                 {
                     requestNode = JsonNode.Parse(body);
                 }
-                catch
+                catch (JsonException)
                 {
                     await WriteJsonResponseAsync(stream, 200, MakeError(null, -32700, "Parse error"));
                     return;
@@ -564,6 +564,8 @@ namespace dnSpy.MCP.Mcp
                     {
                         McpLogger.Warn("Shutdown grace (3s) elapsed: some connections were not closed gracefully");
                     }
+                    // Cancellation is expected here: it means the server is shutting down
+                    // and the drain task is being torn down. Nothing to warn about.
                     catch (OperationCanceledException) { }
                 });
             }

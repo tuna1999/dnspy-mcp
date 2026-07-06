@@ -12,7 +12,7 @@ using dnSpy.MCP.Settings;
 
 namespace dnSpy.MCP {
     [ExportExtension]
-    sealed class TheExtension : IExtension {
+    sealed class TheExtension : IExtension, IMcpExtension {
         private McpServerHost? _serverHost;
 
         [Import]
