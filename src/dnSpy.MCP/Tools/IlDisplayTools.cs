@@ -5,13 +5,13 @@ using dnSpy.MCP.Helpers;
 namespace dnSpy.MCP.Tools {
     public static class IlDisplayTools {
         [Description("Returns formatted IL opcodes for a method with line numbers. Input accepts full name, token, or partial method name.")]
-        public static string GetIlOpcodesFormatted(string methodFullnameOrToken) {
+        public static string GetIlOpcodesFormatted(string methodFullNameOrToken) {
             if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
-            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullnameOrToken);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullNameOrToken);
             if (method == null)
-                return $"Method not found: {methodFullnameOrToken}";
+                return $"Method not found: {methodFullNameOrToken}";
 
             if (method.Body == null)
                 return $"Method has no body: {method.FullName}";

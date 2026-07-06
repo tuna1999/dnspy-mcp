@@ -26,7 +26,7 @@ namespace dnSpy.MCP.Mcp
         private readonly SemaphoreSlim _concurrency;
         private readonly Stopwatch _uptime = Stopwatch.StartNew();
         private int _activeConnections;
-        private readonly TaskCompletionSource _stoppedTcs = new();
+        private TaskCompletionSource _stoppedTcs = new();
 
         /// <summary>
         /// Auth config snapshot taken at StartAsync. Auth must stay stable while the server
@@ -56,23 +56,8 @@ namespace dnSpy.MCP.Mcp
         {
             if (_running) return;
 
-            _cts = new CancellationTokenSource();
-
-            var ipAddress = _settings.Host switch {
-                "0.0.0.0" or "*" => IPAddress.Any,
-                "127.0.0.1" or "localhost" => IPAddress.Loopback,
-                _ => IPAddress.Parse(_settings.Host)
-            };
-
-            _listener = new TcpListener(ipAddress, _settings.Port);
-            _listener.Start();
-
-            McpLogger.Info($"Server started on http://{_settings.Host}:{_settings.Port}/");
-            McpLogger.Info($"Registered {(_registry.ListTools().Count)} tools");
-
-            _running = true;
-
-            // Snapshot auth config so it stays stable for the server's lifetime. Reload requires restart.
+            // Validate all preconditions BEFORE acquiring any resource (listener, port, _running flag).
+            // Throwing after Start() would leak the bound port and leave _running=true with no listener task.
             _authRequired = _settings.RequireAuth;
             _authExpectedToken = _authRequired && !string.IsNullOrEmpty(_settings.ApiToken)
                 ? Encoding.UTF8.GetBytes("Bearer " + _settings.ApiToken)
@@ -83,6 +68,25 @@ namespace dnSpy.MCP.Mcp
             if (_authRequired && _authExpectedToken == null)
                 throw new InvalidOperationException(
                     "RequireAuth is enabled but ApiToken is empty. Set a token in MCP Settings or disable RequireAuth.");
+
+            _cts = new CancellationTokenSource();
+            // _stoppedTcs is single-shot; recreate it so a stop/restart cycle drains correctly.
+            _stoppedTcs = new TaskCompletionSource();
+
+            var ipAddress = _settings.Host switch {
+                "0.0.0.0" or "*" => IPAddress.Any,
+                "127.0.0.1" or "localhost" => IPAddress.Loopback,
+                _ => IPAddress.Parse(_settings.Host)
+            };
+
+            _listener = new TcpListener(ipAddress, _settings.Port);
+            _listener.Start();
+
+            // Auth snapshot is taken above (stable for the server's lifetime; reload requires restart).
+            _running = true;
+
+            McpLogger.Info($"Server started on http://{_settings.Host}:{_settings.Port}/");
+            McpLogger.Info($"Registered {(_registry.ListTools().Count)} tools");
 
             _ = Task.Run(() => ListenAsync(_cts.Token));
         }
@@ -161,7 +165,8 @@ namespace dnSpy.MCP.Mcp
                 {
                     var preflightHeaders = new List<(string, string)> {
                         ("Access-Control-Allow-Methods", "POST, OPTIONS"),
-                        ("Access-Control-Allow-Headers", "Content-Type"),
+                        // Authorization must be allowed so browser clients can send the bearer token.
+                        ("Access-Control-Allow-Headers", "Content-Type, Authorization"),
                     };
                     if (!string.IsNullOrWhiteSpace(_settings.AllowedOrigins))
                         preflightHeaders.Insert(0, ("Access-Control-Allow-Origin", _settings.AllowedOrigins));
@@ -170,13 +175,13 @@ namespace dnSpy.MCP.Mcp
                 }
 
                 // Auth check (fail-closed: snapshot taken at StartAsync).
-                // Constant-time compare to avoid leaking token length/prefix via timing.
+                // FixedTimeEquals handles unequal lengths in constant time — do NOT pre-check
+                // length, which would leak a wrong-length-vs-wrong-content timing distinction.
                 if (_authRequired)
                 {
                     headers.TryGetValue("Authorization", out var auth);
                     var provided = auth is null ? null : Encoding.UTF8.GetBytes(auth);
                     var authorized = provided != null && _authExpectedToken != null
-                        && provided.Length == _authExpectedToken.Length
                         && CryptographicOperations.FixedTimeEquals(provided, _authExpectedToken);
                     if (!authorized)
                     {

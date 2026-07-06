@@ -30,22 +30,26 @@ namespace dnSpy.MCP.Tools {
             return count == 0 ? "No resources found." : $"Resources ({count}):\n\n{sb}";
         }
 
-        [Description("Get raw data of a specific embedded resource by name.")]
+        [Description("Get raw data of a specific embedded resource by name. maxLength caps how many bytes are dumped (default 512).")]
         public static string GetResourceData(string resourceName, int maxLength = 512) {
             var documentService = DnSpyContext.DocumentService;
             if (documentService == null) return "Error: DocumentService not available.";
+
+            // Clamp to a sane range so callers can't request gigabytes of hex.
+            var cap = Math.Max(0, Math.Min(maxLength, dataDumpHardCap));
 
             foreach (var doc in documentService.GetDocuments()) {
                 if (doc.ModuleDef is ModuleDef mod) {
                     foreach (var resource in mod.Resources) {
                         if (resource.Name == resourceName && resource is EmbeddedResource er) {
                             var data = er.CreateReader().ToArray();
+                            var shown = Math.Min(cap, data.Length);
 
                             var sb = new StringBuilder();
                             sb.AppendLine($"Resource: {resourceName}");
                             sb.AppendLine($"Size: {data.Length} bytes");
-                            sb.AppendLine($"Hex: {BitConverter.ToString(data.Take(Math.Min(64, data.Length)).ToArray())}");
-                            if (data.Length > 64) sb.AppendLine($"... ({data.Length - 64} more bytes)");
+                            sb.AppendLine($"Hex: {BitConverter.ToString(data.Take(shown).ToArray())}");
+                            if (data.Length > shown) sb.AppendLine($"... ({data.Length - shown} more bytes)");
                             return sb.ToString();
                         }
                     }
@@ -54,6 +58,8 @@ namespace dnSpy.MCP.Tools {
 
             return $"Resource not found: {resourceName}";
         }
+
+        const int dataDumpHardCap = 4096;
 
         [Description("Get PE and metadata information: headers, metadata version, strong name, assembly attributes.")]
         public static string GetMetadata(string? assembly = null) {

@@ -58,15 +58,15 @@ namespace dnSpy.MCP.Tools {
 
         [Description("List custom attributes on a specific method. Shortcut for get_attributes with targetType='method'.")]
         public static string GetMethodAttributes(
-            [Description("Method identifier: full name, token, or partial name")] string methodFullnameOrToken,
+            [Description("Method identifier: full name, token, or partial name")] string methodFullNameOrToken,
             [Description("Optional filter: only show attributes whose name contains this substring")] string? attributeFilter = null) {
 
             if (DnSpyContext.DocumentService == null)
                 return "Error: DocumentService not available.";
 
-            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullnameOrToken);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullNameOrToken);
             if (method == null)
-                return $"Method not found: {methodFullnameOrToken}";
+                return $"Method not found: {methodFullNameOrToken}";
 
             return GetAttributes("method", method.FullName, attributeFilter);
         }

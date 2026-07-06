@@ -22,7 +22,7 @@ namespace dnSpy.MCP.Tools {
     public static class IlPatchTools {
         [Description("Patch method body using C# statements. By default dryRun=true. Pass assemblyName when multiple binaries are loaded to avoid patching the wrong one. Example methodBody: Console.WriteLine(\"patched\"); return 1;")]
         public static string UpdateMethodBody(
-            [Description("Method identifier: full name, token, or partial name")] string methodFullnameOrToken,
+            [Description("Method identifier: full name, token, or partial name")] string methodFullNameOrToken,
             [Description("C# statements for method body only")] string methodBody,
             [Description("If true, only validates and previews without modifying IL")] bool dryRun = true,
             [Description("Optional assembly simple name to scope resolution when multiple binaries are loaded")] string? assemblyName = null) {
@@ -34,9 +34,9 @@ namespace dnSpy.MCP.Tools {
             if (string.IsNullOrWhiteSpace(methodBody))
                 return "Error: methodBody is required.";
 
-            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullnameOrToken, assemblyName);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullNameOrToken, assemblyName);
             if (method == null)
-                return $"Method not found: {methodFullnameOrToken}{(string.IsNullOrEmpty(assemblyName) ? "" : $" in assembly '{assemblyName}'")}";
+                return $"Method not found: {methodFullNameOrToken}{(string.IsNullOrEmpty(assemblyName) ? "" : $" in assembly '{assemblyName}'")}";
 
             if (method.Body == null)
                 return $"Method has no body: {method.FullName}";

@@ -9,15 +9,15 @@ using dnSpy.MCP.Mcp;
 namespace dnSpy.MCP.Tools {
     public static class DecompilerTools {
         [Description("Decompile a specific method to C# code. Format: 'Namespace.Class::Method' or just 'Method'")]
-        public static string DecompileMethod(string methodFullnameOrToken) {
+        public static string DecompileMethod(string methodFullNameOrToken) {
             var decompilerService = DnSpyContext.DecompilerService;
             if (DnSpyContext.DocumentService == null || decompilerService == null)
                 return "Error: dnSpy services not available.";
 
-            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullnameOrToken);
+            var method = DnSpyContext.Resolver.ResolveMethodFlexible(methodFullNameOrToken);
 
             if (method == null)
-                return $"Method not found: {methodFullnameOrToken}";
+                return $"Method not found: {methodFullNameOrToken}";
 
             try {
                 var output = new TextDecompilerOutput();
@@ -30,15 +30,15 @@ namespace dnSpy.MCP.Tools {
         }
 
         [Description("Decompile an entire type (all members) to C# code.")]
-        public static string DecompileType(string typeFullname) {
+        public static string DecompileType(string typeFullName) {
             var decompilerService = DnSpyContext.DecompilerService;
             if (DnSpyContext.DocumentService == null || decompilerService == null)
                 return "Error: dnSpy services not available.";
 
-            var type = DnSpyContext.Resolver.ResolveType(typeFullname);
+            var type = DnSpyContext.Resolver.ResolveType(typeFullName);
 
             if (type == null)
-                return $"Type not found: {typeFullname}";
+                return $"Type not found: {typeFullName}";
 
             try {
                 var output = new TextDecompilerOutput();
