@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference the main project. Tests target the pure modules (JsonRpc,
+         BufferedLineReader) and internal helpers exposed via InternalsVisibleTo
+         in the main project (AssemblyInfo). -->
+    <ProjectReference Include="..\dnSpy.MCP\dnSpy.MCP.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- dnSpy contract DLLs needed transitively by the main project. -->
+    <Reference Include="dnSpy.Contracts.DnSpy">
+      <HintPath>..\..\deps\dnSpy.Contracts.DnSpy.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="dnSpy.Contracts.Logic">
+      <HintPath>..\..\deps\dnSpy.Contracts.Logic.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ICSharpCode.Decompiler">
+      <HintPath>..\..\deps\ICSharpCode.Decompiler.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="dnlib">
+      <HintPath>..\..\deps\dnlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

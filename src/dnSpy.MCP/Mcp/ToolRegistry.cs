@@ -189,7 +189,7 @@ namespace dnSpy.MCP.Mcp {
             public bool Required { get; init; }
         }
 
-        private static string ToSnakeCase(string name) {
+        internal static string ToSnakeCase(string name) {
             var sb = new System.Text.StringBuilder(name.Length + 10);
             for (int i = 0; i < name.Length; i++) {
                 var c = name[i];
@@ -207,7 +207,7 @@ namespace dnSpy.MCP.Mcp {
         /// </summary>
         private static readonly string[] s_mutationPrefixes = { "update_", "rename_", "patch_" };
 
-        private static bool IsMutationTool(string toolName) {
+        internal static bool IsMutationTool(string toolName) {
             foreach (var prefix in s_mutationPrefixes) {
                 if (toolName.StartsWith(prefix, StringComparison.Ordinal))
                     return true;
