@@ -223,7 +223,7 @@ namespace dnSpy.MCP.Mcp
                 }
                 catch (JsonException)
                 {
-                    await WriteJsonResponseAsync(stream, 200, MakeError(null, -32700, "Parse error"));
+                    await WriteJsonResponseAsync(stream, 200, JsonRpc.MakeError(null, -32700, "Parse error"));
                     return;
                 }
 
@@ -244,14 +244,14 @@ namespace dnSpy.MCP.Mcp
                 {
                     if (req == null)
                     {
-                        results.Add(MakeError(null, -32600, "Invalid Request"));
+                        results.Add(JsonRpc.MakeError(null, -32600, "Invalid Request"));
                         continue;
                     }
 
                     var rpcMethod = req["method"]?.GetValue<string>();
                     if (string.IsNullOrEmpty(rpcMethod))
                     {
-                        results.Add(MakeError(req["id"], -32600, "Invalid Request"));
+                        results.Add(JsonRpc.MakeError(req["id"], -32600, "Invalid Request"));
                         continue;
                     }
 
@@ -261,7 +261,7 @@ namespace dnSpy.MCP.Mcp
                     if (rpcMethod == "initialize")
                     {
                         McpLogger.Info("Client initialized");
-                        results.Add(isNotification ? null : CreateResponse(id, CreateServerCapabilities()));
+                        results.Add(isNotification ? null : JsonRpc.CreateResponse(id, JsonRpc.CreateServerCapabilities()));
                     }
                     else if (rpcMethod == "tools/list")
                     {
@@ -271,7 +271,7 @@ namespace dnSpy.MCP.Mcp
                         {
                             ["tools"] = JsonSerializer.SerializeToNode(tools)
                         };
-                        results.Add(isNotification ? null : CreateResponse(id, result));
+                        results.Add(isNotification ? null : JsonRpc.CreateResponse(id, result));
                     }
                     else if (rpcMethod == "tools/call")
                     {
@@ -282,12 +282,12 @@ namespace dnSpy.MCP.Mcp
                     }
                     else if (rpcMethod == "notifications/initialized" || rpcMethod == "shutdown")
                     {
-                        results.Add(isNotification ? null : CreateResponse(id, new JsonObject()));
+                        results.Add(isNotification ? null : JsonRpc.CreateResponse(id, new JsonObject()));
                     }
                     else
                     {
                         McpLogger.Warn($"Unknown method: {rpcMethod}");
-                        results.Add(isNotification ? null : MakeError(id, -32601, $"Method not found: {rpcMethod}"));
+                        results.Add(isNotification ? null : JsonRpc.MakeError(id, -32601, $"Method not found: {rpcMethod}"));
                     }
                 }
 
@@ -316,72 +316,6 @@ namespace dnSpy.MCP.Mcp
             catch (Exception ex)
             {
                 McpLogger.Error(ex, "Connection handler error");
-            }
-        }
-
-        /// <summary>
-        /// Buffered reader that preserves unconsumed bytes across calls.
-        /// Fixes the bug where a 256-byte buffer consumed data beyond headers
-        /// into the body, then that buffered body data was discarded.
-        /// </summary>
-        private sealed class BufferedLineReader
-        {
-            private readonly Stream _stream;
-            private readonly byte[] _buf = new byte[4096];
-            private int _bufPos, _bufLen;
-
-            public BufferedLineReader(Stream stream) => _stream = stream;
-
-            public async Task<string?> ReadLineAsync(CancellationToken ct = default)
-            {
-                var sb = new StringBuilder(256);
-
-                while (true)
-                {
-                    if (_bufPos >= _bufLen)
-                    {
-                        _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length, ct);
-                        if (_bufLen == 0) return sb.Length > 0 ? sb.ToString() : null;
-                        _bufPos = 0;
-                    }
-
-                    var b = _buf[_bufPos++];
-                    if (b == '\r')
-                    {
-                        // consume \n after \r
-                        if (_bufPos >= _bufLen)
-                        {
-                            _bufLen = await _stream.ReadAsync(_buf, 0, _buf.Length, ct);
-                            _bufPos = 0;
-                        }
-                        if (_bufLen > 0 && _buf[_bufPos] == '\n') _bufPos++;
-                        break;
-                    }
-                    if (b == '\n') break;
-                    sb.Append((char)b);
-                }
-                return sb.ToString();
-            }
-
-            /// <summary>
-            /// Reads exactly <paramref name="count"/> bytes, draining the internal
-            /// buffer first before reading from the underlying stream.
-            /// </summary>
-            public async Task ReadExactlyAsync(byte[] dest, int offset, int count, CancellationToken ct = default)
-            {
-                // Drain buffered bytes first
-                var buffered = Math.Min(count, _bufLen - _bufPos);
-                if (buffered > 0)
-                {
-                    Array.Copy(_buf, _bufPos, dest, offset, buffered);
-                    _bufPos += buffered;
-                    offset += buffered;
-                    count -= buffered;
-                }
-
-                // Read remaining directly from stream
-                if (count > 0)
-                    await _stream.ReadAtLeastAsync(new Memory<byte>(dest, offset, count), count, cancellationToken: ct, throwOnEndOfStream: true);
             }
         }
 
@@ -438,13 +372,13 @@ namespace dnSpy.MCP.Mcp
 
             if (string.IsNullOrEmpty(toolName))
             {
-                return MakeError(request["id"], -32602, "Missing tool name");
+                return JsonRpc.MakeError(request["id"], -32602, "Missing tool name");
             }
 
             var tool = _registry.GetTool(toolName);
             if (tool == null)
             {
-                return MakeError(request["id"], -32601, $"Unknown tool: {toolName}");
+                return JsonRpc.MakeError(request["id"], -32601, $"Unknown tool: {toolName}");
             }
 
             try
@@ -472,7 +406,7 @@ namespace dnSpy.MCP.Mcp
                         }
                     };
 
-                    return CreateResponse(request["id"], new JsonObject
+                    return JsonRpc.CreateResponse(request["id"], new JsonObject
                     {
                         ["content"] = content
                     });
@@ -485,59 +419,13 @@ namespace dnSpy.MCP.Mcp
             catch (TimeoutException)
             {
                 McpLogger.Warn($"Tool '{toolName}' timed out after {_settings.ToolTimeoutSeconds}s");
-                return MakeError(request["id"], -32603, $"Tool execution timed out after {_settings.ToolTimeoutSeconds} seconds");
+                return JsonRpc.MakeError(request["id"], -32603, $"Tool execution timed out after {_settings.ToolTimeoutSeconds} seconds");
             }
             catch (Exception ex)
             {
                 McpLogger.Error(ex, $"Tool '{toolName}'");
-                return MakeError(request["id"], -32603, $"Tool execution failed: {ex.Message}");
+                return JsonRpc.MakeError(request["id"], -32603, $"Tool execution failed: {ex.Message}");
             }
-        }
-
-        private static JsonObject CreateServerCapabilities()
-        {
-            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
-            return new JsonObject
-            {
-                ["protocolVersion"] = "2024-11-05",
-                ["capabilities"] = new JsonObject
-                {
-                    ["tools"] = new JsonObject()
-                },
-                ["serverInfo"] = new JsonObject
-                {
-                    ["name"] = "dnSpy-MCP",
-                    ["version"] = version
-                }
-            };
-        }
-
-        private static JsonObject CreateResponse(JsonNode? id, JsonNode result)
-        {
-            var response = new JsonObject
-            {
-                ["jsonrpc"] = "2.0",
-                ["result"] = result
-            };
-            if (id != null)
-                response["id"] = id.DeepClone();
-            return response;
-        }
-
-        private static JsonObject MakeError(JsonNode? id, int code, string message)
-        {
-            var response = new JsonObject
-            {
-                ["jsonrpc"] = "2.0",
-                ["error"] = new JsonObject
-                {
-                    ["code"] = code,
-                    ["message"] = message
-                }
-            };
-            if (id != null)
-                response["id"] = id.DeepClone();
-            return response;
         }
 
         public void Stop()
