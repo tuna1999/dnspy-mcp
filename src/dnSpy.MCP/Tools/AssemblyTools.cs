@@ -25,15 +25,24 @@ namespace dnSpy.MCP.Tools {
                 return $"Error: file not found: {path}";
 
             try {
-                // Document creation mutates the document collection (drives the TreeView), so it
-                // must run on the UI thread. CreateDocument adds the doc + triggers CollectionChanged.
+                // CreateDocument(..., isModule: true) here produces a module document
+                // (isAsmNode=false, CreateChildren() returns empty), whose assembly node then has
+                // no namespace/type children and cannot be expanded. It also never inserts into the
+                // document list, so list_loaded_assemblies / search_* would not see it.
+                //
+                // TryGetOrCreate handles dedup (by FilenameKey), creation, GetOrAdd insertion, and
+                // fires CollectionChanged so the TreeView creates the node. This method call dnSpy's
+                // own file loader uses (DsDocumentLoader.Load => documentService.TryGetOrCreate(info)).
+                //
+                // Document creation mutates the document collection (drives the TreeView), so it 
+                // must run on the UI thread.
                 IDsDocument? doc = null;
                 TreeViewTools.RunOnUIThread(() => {
-                    doc = documentService.CreateDocument(DsDocumentInfo.CreateDocument(path), path, isModule: true);
+                    doc = documentService.TryGetOrCreate(DsDocumentInfo.CreateDocument(path));
                 });
 
                 if (doc == null)
-                    return $"Error: failed to load '{path}' (CreateDocument returned null).";
+                    return $"Error: failed to load '{path}' (TryGetOrCreate returned null).";
 
                 if (doc.ModuleDef is ModuleDef mod) {
                     var typeCount = mod.GetTypes().Count();
