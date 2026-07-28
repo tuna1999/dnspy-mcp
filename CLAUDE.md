@@ -12,105 +12,178 @@ mkdir deps
 #   dnSpy.Contracts.Logic.dll
 #   ICSharpCode.Decompiler.dll
 #   dnlib.dll
+# Headless-only (for dnSpy.MCP.Headless project):
+#   dnSpy.Decompiler.dll
+#   dnSpy.Decompiler.ILSpy.Core.dll
+#   dnSpy.Decompiler.ILSpy.dll
+#   ICSharpCode.NRefactory.dll
+#   ICSharpCode.NRefactory.CSharp.dll
 ```
 
 ### Local Development
 ```powershell
-# Build only (Release default)
-dotnet build src/dnSpy.MCP/dnSpy.MCP.csproj -c Release
+# Build entire solution (Core + Extension + Headless + Tests)
+dotnet build dnspy_mcp.sln -c Release
 
-# Deploy extension (requires dnSpy closed)
+# Deploy extension only (requires dnSpy closed)
 pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy
+
+# Run Headless (stdio MCP server)
+dotnet run --project src/dnSpy.MCP.Headless/dnSpy.MCP.Headless.csproj -- --load path\to\file.dll
 ```
 
 Options: `-Clean`, `-Deploy`, `-DeployDir <path>`, `-Configuration <Debug|Release>`
 
 ### CI
-GitHub Actions (`build.yml`) auto-downloads dnSpy deps and runs `dotnet build -c Release`. No manual setup needed.
+GitHub Actions (`build.yml`) auto-downloads dnSpy deps and runs `dotnet build dnspy_mcp.sln -c Release`. No manual setup needed.
 
-**Tool-count guard**: after adding/removing a tool, run `pwsh scripts/verify-tool-count.ps1`. It cross-checks the count discovered by the same reflection rules `ToolRegistry` uses against the `## Available MCP Tools (NN)` header here — fails on drift so docs and code can't silently diverge.
+**Tool-count guard**: after adding/removing a tool, run `pwsh scripts/verify-tool-count.ps1`. It cross-checks the count discovered by reflection against the `## Available MCP Tools (NN)` header here — scans BOTH Core tools (instance methods on sealed classes with McpContext ctor) AND Extension-only tools (static methods, e.g. TreeViewTools). Fails on drift so docs and code can't silently diverge.
 
 ### Build output
-- **Release DLL**: `src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll`
-- **Deploy to dnSpy**: copy `dnSpy.MCP.x.dll`, `.deps.json`, `.pdb` (optional) to `<dnSpy>/bin/Extensions/`
+- **Core lib**: `src/dnSpy.MCP.Core/bin/Release/net10.0/dnSpy.MCP.Core.dll`
+- **Extension DLL**: `src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll`
+- **Headless exe**: `src/dnSpy.MCP.Headless/bin/Release/net10.0/dnspy-mcp-headless.dll`
+- **Deploy to dnSpy**: copy `dnSpy.MCP.x.dll`, `.deps.json`, `.pdb`, AND `dnSpy.MCP.Core.dll` to `<dnSpy>/bin/Extensions/`
 
 ## Project Layout
 
 ```
 dnspy_mcp/
-├── src/dnSpy.MCP/           # Standalone extension project
-│   ├── TheExtension.cs       # MEF [ExportExtension] entry point
-│   ├── DnSpyContext.cs       # Static service bridge + lazy IServiceLocator resolution
-│   ├── MenuCommands.cs        # MCP Server menu items
-│   ├── Mcp/
-│   │   ├── McpServerHost.cs  # TcpListener + JSON-RPC 2.0 dispatch
-│   │   ├── ToolRegistry.cs   # Reflection-based tool discovery
-│   │   └── McpLogger.cs     # File + Output Window logging
-│   ├── Settings/             # dnSpy Options integration
-│   │   ├── McpSettings.cs           # Port, host, auth, timeout, etc.
-│   │   ├── McpSettingsPage.cs       # Options dialog integration
-│   │   ├── McpSettingsControl.xaml  # Settings UI
-│   │   └── McpSettingsControl.xaml.cs
-│   ├── Tools/                # 14 tool classes, 38 tools
-│   │   ├── IlDisplayTools.cs # IL opcode formatting (read-only)
-│   │   ├── IlPatchTools.cs   # IL patching via Roslyn compilation
-│   └── Helpers/
-│       ├── MethodResolver.cs
-│       └── TextDecompilerOutput.cs
-├── deps/                     # dnSpy DLL references
-└── scripts/build.ps1
+├── dnspy_mcp.sln                # Solution referencing all 3 projects + tests
+├── src/
+│   ├── dnSpy.MCP.Core/          # Pure analysis library (no WPF, net10.0)
+│   │   ├── Abstractions/        # 5 host-agnostic interfaces
+│   │   │   ├── IAssemblyLoader.cs
+│   │   │   ├── ISourceDecompiler.cs
+│   │   │   ├── IUIThreadScheduler.cs
+│   │   │   ├── ILogSink.cs
+│   │   │   └── ITreeRefreshNotifier.cs
+│   │   ├── Adapters/
+│   │   │   └── DnSpyDecompilerSourceProvider.cs  # Shared IDecompiler bridge
+│   │   ├── Mcp/
+│   │   │   ├── McpContext.cs        # Instance composition root (5 deps + Resolver)
+│   │   │   ├── ToolRegistry.cs      # Hybrid instance/static reflection discovery
+│   │   │   ├── McpServerHost.cs     # TcpListener + JSON-RPC 2.0 dispatch (HTTP)
+│   │   │   ├── JsonRpc.cs           # JSON-RPC 2.0 protocol helpers
+│   │   │   ├── BufferedLineReader.cs # HTTP/stdio line reader
+│   │   │   └── McpLogger.cs         # File-only logging (Level enum)
+│   │   ├── Helpers/
+│   │   │   └── MethodResolver.cs    # ctor(IAssemblyLoader) — host-agnostic
+│   │   ├── Settings/
+│   │   │   └── McpSettings.cs       # POCO base (ViewModelBase)
+│   │   └── Tools/                   # 13 instance tool classes, 36 tools
+│   │       ├── DecompilerTools.cs
+│   │       ├── AssemblyTools.cs
+│   │       ├── SearchTools.cs
+│   │       ├── AnalysisTools.cs
+│   │       ├── XrefTools.cs
+│   │       ├── IlDisplayTools.cs
+│   │       ├── IlPatchTools.cs      # IL patching via Roslyn compilation
+│   │       ├── ResourceTools.cs
+│   │       ├── TypeInspectorTools.cs
+│   │       ├── AttributeTools.cs
+│   │       ├── ConstantTools.cs
+│   │       ├── NamespaceTools.cs
+│   │       └── RenameTools.cs
+│   │
+│   ├── dnSpy.MCP/               # Extension (WPF, net10.0-windows) — refs Core
+│   │   ├── TheExtension.cs       # MEF [ExportExtension] entry, composes McpContext
+│   │   ├── IMcpExtension.cs      # Internal contract for menu commands
+│   │   ├── MenuCommands.cs       # MCP Server menu items
+│   │   ├── Adapters/             # dnSpy-backed adapter implementations
+│   │   │   ├── DnSpyAssemblyLoader.cs       # Wraps IDsDocumentService
+│   │   │   ├── WpfUIThreadScheduler.cs      # Dispatcher.Invoke
+│   │   │   ├── DnSpyLogSink.cs              # File + Output Pane
+│   │   │   └── DnSpyTreeRefreshNotifier.cs  # TreeView + tab refresh
+│   │   ├── Settings/             # dnSpy Options integration
+│   │   │   ├── McpSettingsImpl.cs       # MEF-exported subclass (load/save via ISettingsService)
+│   │   │   ├── McpSettingsPage.cs       # Options dialog integration
+│   │   │   ├── McpSettingsControl.xaml  # Settings UI
+│   │   │   └── McpSettingsControl.xaml.cs
+│   │   └── Tools/
+│   │       └── TreeViewTools.cs  # Extension-only (2 tools: get_selected_node, refresh_u_i)
+│   │
+│   └── dnSpy.MCP.Headless/      # Standalone exe (no WPF, net10.0) — refs Core + MCP SDK
+│       ├── Program.cs            # Host + DI + CLI parse + stdio MCP transport
+│       ├── CliOptions.cs         # --load / --config / --help args
+│       └── Adapters/             # Headless-specific adapter implementations
+│           ├── DnlibAssemblyLoader.cs       # ModuleDefMD.Load + registry
+│           ├── DnSpyDecompilerLoader.cs     # Reflection load IDecompilerProvider
+│           ├── InlineUIThreadScheduler.cs   # No-op (no UI thread)
+│           ├── StderrLogSink.cs             # stderr only (MCP stdio rule)
+│           ├── NoOpTreeRefreshNotifier.cs   # No-op
+│           └── AutoToolRegistration.cs      # Reflection wrap Core tools to MCP SDK
+│
+├── deps/                         # dnSpy DLL references (Contracts, Logic, dnlib, Decompilers)
+├── tests/                        # Test projects (Phase 6 — TBD)
+└── scripts/
+    ├── build.ps1                 # Build + deploy script
+    └── verify-tool-count.ps1     # Tool-count guard (scans Core + Extension tools dirs)
 ```
 
 ## Architecture
 
-### Why HttpListener Instead of MCP SDK?
-The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: custom HTTP transport via `System.Net.HttpListener`.
+### Three-Project Structure (B3' DI-based Hybrid)
+- **`dnSpy.MCP.Core`** (lib, net10.0, no WPF): pure analysis library with 5 abstraction interfaces, `McpContext` composition root, 13 instance tool classes, `ToolRegistry` reflection discovery, `McpServerHost` HTTP transport.
+- **`dnSpy.MCP`** (Extension, net10.0-windows, WPF): MEF entry, composes `McpContext` with dnSpy-backed adapters, references Core. Hosts the in-dnSpy HTTP MCP server.
+- **`dnSpy.MCP.Headless`** (Exe, net10.0, no WPF): standalone stdio MCP server for batch analysis. Uses MCP SDK + dnSpy decompiler DLLs via reflection (`IDecompilerProvider`).
+
+### Why HttpListener Instead of MCP SDK in Extension?
+The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: Extension uses custom HTTP transport via `System.Net.HttpListener` (in Core). Headless uses MCP SDK's stdio transport (no conflict because it runs in its own process).
 
 ### Extension Lifecycle
 ```
 dnSpy starts
   → MEF discovers dnSpy.MCP.x.dll
   → TheExtension constructor: [Import] gets services
-  → OnEvent(ExtensionEvent.AppLoaded): DnSpyContext.Initialize(...) + EnsureOutputPane()
-  → User clicks Start (or AutoStart=true in Settings) → HttpListener starts
+  → OnEvent(ExtensionEvent.AppLoaded):
+      - Resolve IDocumentTreeView + IDocumentTabService via IServiceLocator
+      - TreeViewTools.Initialize(treeView, tabService)
+      - Create Output Pane lazily
+  → User clicks Start (or AutoStart=true in Settings):
+      - Compose McpContext with 5 dnSpy-backed adapters (DnSpyAssemblyLoader, DnSpyDecompilerSourceProvider via DecompilerService.Decompiler, WpfUIThreadScheduler, DnSpyLogSink, DnSpyTreeRefreshNotifier)
+      - Build ToolRegistry(ctx, Core assembly + Extension assembly)
+      - McpServerHost(Settings, registry) → HttpListener starts
 ```
 
-Server starts on **manual click** (not at launch) so `EnsureOutputPane()` runs on a fully initialized WPF UI thread.
+Server starts on **manual click** (not at launch) so Output Pane creation runs on a fully initialized WPF UI thread.
 
 ### Tool Discovery
-Tools are `public static` methods in `dnSpy.MCP.Tools.*` with `[Description("...")]`. `ToolRegistry.DiscoverTools()` scans via reflection. Tool names auto-convert to `snake_case`.
+Tools are `public` methods on classes in namespace `dnSpy.MCP.Tools*` with `[Description("...")]` attribute. `ToolRegistry.DiscoverTools()` accepts BOTH:
+- **Instance classes** with `ctor(McpContext)` — Core's 13 tool classes
+- **Static classes** — Extension-only `TreeViewTools` (provides `get_selected_node`, `refresh_u_i`)
 
-### Service Access
-`DnSpyContext.cs` is a static singleton bridging MEF to MCP tools. Three access patterns:
+Tool names auto-convert to `snake_case` via `ToolRegistry.ToSnakeCase`.
 
-**Direct services** (always available after init):
+### Service Access (McpContext)
+`McpContext` is an **instance class** (typed composition root) holding 5 dependencies + derived `MethodResolver`. Tools receive it via constructor injection:
+
 ```csharp
-DnSpyContext.DocumentService
-DnSpyContext.DecompilerService
+public sealed class DecompilerTools {
+    private readonly McpContext _ctx;
+    public DecompilerTools(McpContext ctx) => _ctx = ctx;
+
+    public string DecompileMethod(string name) {
+        var method = _ctx.Resolver.ResolveMethodFlexible(name);
+        return _ctx.SourceDecompiler.DecompileMethod(method);
+    }
+}
 ```
 
-**Cached resolver** (shared `MethodResolver`, lazy-initialized):
-```csharp
-DnSpyContext.Resolver  // returns MethodResolver backed by DocumentService
-```
-Tools should use `DnSpyContext.Resolver` instead of creating `new MethodResolver()`.
+The 5 abstraction interfaces (`IAssemblyLoader`, `ISourceDecompiler`, `IUIThreadScheduler`, `ILogSink`, `ITreeRefreshNotifier`) seam host-specific dependencies:
+- **Extension adapters** (`src/dnSpy.MCP/Adapters/`): wrap dnSpy contracts
+- **Headless adapters** (`src/dnSpy.MCP.Headless/Adapters/`): use dnlib directly + dnSpy decompiler via reflection
 
-**Lazy services** (resolved via `IServiceLocator.TryResolve<T>()` on first access):
-```csharp
-DnSpyContext.TabService     // IDocumentTabService
-DnSpyContext.TreeView       // IDocumentTreeView
-```
-
-`IServiceLocator` is imported via MEF and passed to `DnSpyContext.Initialize()` at `AppLoaded`. The lazy pattern avoids MEF import order issues with these services.
+The shared `DnSpyDecompilerSourceProvider` (in Core/Adapters) wraps dnSpy's `IDecompiler` for BOTH hosts — output is byte-identical to dnSpy.exe.
 
 ### Method Resolution
-All method-accepting tools use `MethodResolver.ResolveMethodFlexible(string identifier)` which tries in order:
+All method-accepting tools use `MethodResolver.ResolveMethodFlexible(string identifier)` (in `_ctx.Resolver`) which tries in order:
 1. Hex token (`0x...`)
 2. Plain integer token
 3. Full name (`Namespace.Class::Method`)
 4. Fallback short name search (returns **first** match)
 
-Do NOT duplicate this logic — call `DnSpyContext.Resolver.ResolveMethodFlexible()`.
+Do NOT duplicate this logic — call `_ctx.Resolver.ResolveMethodFlexible()`.
 
 ### Assembly Scoping
 dnSpy can open multiple binaries simultaneously. To avoid ambiguous results:
@@ -150,7 +223,7 @@ if (dispatcher?.CheckAccess() == false)
 // WRONG: direct access from background thread throws InvalidOperationException
 ```
 
-`TreeViewTools.RunOnUIThread()` provides reusable helpers. Metadata mutation tools (rename, patch) auto-refresh tree view internally.
+`TreeViewTools.RunOnUIThread()` provides reusable helpers for Extension-only code. Core tool classes use `_ctx.UI.Invoke(...)` (the `IUIThreadScheduler` abstraction). Metadata mutation tools (rename, patch) auto-refresh tree view internally via `_ctx.TreeRefresh.RefreshAll()`.
 
 ### Server Endpoints & Auth
 - **Health check**: `GET /health` or `GET /ping` — returns JSON with status, uptime, tools count
@@ -163,11 +236,13 @@ if (dispatcher?.CheckAccess() == false)
 
 ```
 AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
-  → McpServerHost.HandleRequest()
+  → McpServerHost.HandleRequest()  (Core's HTTP transport)
     → ToolRegistry.GetTool("tool_name")
-      → MethodInfo.Invoke(null, args)
-        → accesses DnSpyContext.DocumentService / DecompilerService
-          → decompilerService.Decompiler.Decompile(method, output, new DecompilationContext())
+      → MethodInfo.Invoke(toolEntry.Instance, args)
+        → instance is tool class injected with McpContext (e.g. DecompilerTools)
+          → _ctx.AssemblyLoader / Resolver / SourceDecompiler / TreeRefresh
+            → DnSpyDecompilerSourceProvider.DecompileMethod(method)
+              → delegates to dnSpy.Contracts.Decompiler.IDecompiler (output identical to dnSpy.exe)
 ```
 
 ## Available MCP Tools (38)
