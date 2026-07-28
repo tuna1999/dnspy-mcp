@@ -4,6 +4,8 @@ using System.ComponentModel.Composition;
 using System.Threading.Tasks;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Documents;
+using dnSpy.Contracts.Documents.Tabs;
+using dnSpy.Contracts.Documents.TreeView;
 using dnSpy.Contracts.Extension;
 using dnSpy.Contracts.Output;
 using dnSpy.Contracts.Scripting;
@@ -11,6 +13,7 @@ using dnSpy.MCP.Adapters;
 using dnSpy.MCP.Core.Adapters;
 using dnSpy.MCP.Core.Mcp;
 using dnSpy.MCP.Settings;
+using Microsoft.VisualStudio.Composition;
 
 namespace dnSpy.MCP {
     [ExportExtension]
@@ -85,17 +88,24 @@ namespace dnSpy.MCP {
                 return;
             }
 
-            // Build McpContext + ToolRegistry. Phase 4 replaces stubs with real adapters
-            // backed by DnSpyContext; WpfUIThreadScheduler is shared between loader and context.
+            // Build McpContext + ToolRegistry with real adapters backed by DnSpyContext.
+            // WpfUIThreadScheduler is shared between loader, log sink, and notifier so all
+            // UI-thread marshaling goes through one dispatcher path.
             var uiScheduler = new WpfUIThreadScheduler();
-            var stubCtx = new McpContext(
+
+            // Resolve tab service + tree view lazily (same pattern as DnSpyContext, but here
+            // we pass them by value into the notifier so tests can substitute stubs).
+            var treeView = ServiceLocator?.TryResolve<IDocumentTreeView>();
+            var tabService = ServiceLocator?.TryResolve<IDocumentTabService>();
+
+            var ctx = new McpContext(
                 new DnSpyAssemblyLoader(DocumentService!, uiScheduler),
                 new DnSpyDecompilerSourceProvider(DecompilerService!.Decompiler),
                 uiScheduler,
-                new StubLogSink(),
-                new StubTreeRefreshNotifier());
-            var stubRegistry = new ToolRegistry(stubCtx, typeof(McpContext).Assembly);
-            _serverHost = new McpServerHost(Settings!, stubRegistry);
+                new DnSpyLogSink(uiScheduler, DnSpyContext.OutputPane),
+                new DnSpyTreeRefreshNotifier(treeView, tabService, DocumentService, uiScheduler));
+            var registry = new ToolRegistry(ctx, typeof(McpContext).Assembly);
+            _serverHost = new McpServerHost(Settings!, registry);
             Task.Run(async () => {
                 try {
                     await _serverHost.StartAsync();
