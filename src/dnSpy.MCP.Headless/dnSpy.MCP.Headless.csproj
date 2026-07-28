@@ -47,6 +47,10 @@
       <HintPath>$(DnSpyBin)\ICSharpCode.NRefactory.CSharp.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="ICSharpCode.NRefactory.VB">
+      <HintPath>$(DnSpyBin)\ICSharpCode.NRefactory.VB.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="dnlib">
       <HintPath>$(DnSpyBin)\dnlib.dll</HintPath>
       <Private>true</Private>
