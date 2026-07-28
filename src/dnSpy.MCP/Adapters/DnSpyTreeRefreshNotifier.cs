@@ -70,8 +70,9 @@ internal sealed class DnSpyTreeRefreshNotifier : ITreeRefreshNotifier {
     /// </summary>
     public void NotifyNamespaceRenamed(string assembly, string oldNamespace, string newNamespace) {
         if (_treeView is null) return;
-        // TreeViewTools.UpdateNamespaceNode reads DnSpyContext.TreeView internally; it already
-        // marshals to the UI thread and refreshes the affected module's tab.
+        // TreeViewTools.UpdateNamespaceNode reads its static treeView/tabService fields
+        // (populated by TheExtension.OnEvent) and already marshals to the UI thread and
+        // refreshes the affected module's tab.
         TreeViewTools.UpdateNamespaceNode(assembly, oldNamespace, newNamespace);
     }
 }

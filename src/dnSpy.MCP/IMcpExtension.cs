@@ -1,9 +1,8 @@
 namespace dnSpy.MCP {
     /// <summary>
-    /// Minimal contract exposed by the MCP extension entry point.
-    /// Exists to break the import cycle between <see cref="DnSpyContext"/> (static bridge)
-    /// and <see cref="TheExtension"/> (concrete host) — DnSpyContext depends only on this
-    /// interface, never on the concrete type.
+    /// Minimal contract exposed by the MCP extension entry point (<see cref="TheExtension"/>).
+    /// Menu commands reach the running server via <see cref="TheExtension.Instance"/>,
+    /// typed as this interface to avoid coupling menu items to the concrete host.
     /// </summary>
     internal interface IMcpExtension {
         /// <summary>Whether the MCP server is currently accepting requests.</summary>
