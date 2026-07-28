@@ -50,6 +50,14 @@ public static class McpLogger {
         System.Diagnostics.Debug.WriteLine($"MCP: {line}");
     }
 
+    /// <summary>Convenience wrappers around <see cref="Log(Level, string)"/>. These match
+    /// the historical Extension-only API so call sites (McpServerHost, Headless host) can
+    /// use the same Info/Warn/Error shorthand regardless of host.</summary>
+    public static void Info(string message) => Log(Level.Info, message);
+    public static void Warn(string message) => Log(Level.Warn, message);
+    public static void Error(string message) => Log(Level.Error, message);
+    public static void Error(Exception ex, string message) => Log(Level.Error, $"{message}: {ex}");
+
     public static string LogPath => _logPath;
 
     /// <summary>Rotates the log file when it exceeds MaxFileSizeBytes. Caller must hold _fileLock.</summary>
