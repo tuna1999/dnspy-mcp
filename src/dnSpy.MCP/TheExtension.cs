@@ -84,12 +84,13 @@ namespace dnSpy.MCP {
                 return;
             }
 
-            // Build McpContext + ToolRegistry using stubs (temporary — Phase 4 replaces 4 of 5
-            // stubs with real implementations backed by DnSpyContext; WpfUIThreadScheduler stays).
+            // Build McpContext + ToolRegistry. Phase 4 replaces stubs with real adapters
+            // backed by DnSpyContext; WpfUIThreadScheduler is shared between loader and context.
+            var uiScheduler = new WpfUIThreadScheduler();
             var stubCtx = new McpContext(
-                new StubAssemblyLoader(),
+                new DnSpyAssemblyLoader(DocumentService!, uiScheduler),
                 new StubSourceDecompiler(),
-                new WpfUIThreadScheduler(),
+                uiScheduler,
                 new StubLogSink(),
                 new StubTreeRefreshNotifier());
             var stubRegistry = new ToolRegistry(stubCtx, typeof(McpContext).Assembly);
