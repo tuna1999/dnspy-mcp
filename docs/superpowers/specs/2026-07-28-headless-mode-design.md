@@ -393,7 +393,8 @@ Steps 4 and 6 are byte-for-byte identical across hosts — interfaces are correc
 | JSON-RPC protocol | -32700/-32600/-32601/-32602 | SDK-enforced |
 | Tool not found | -32601 | SDK-enforced |
 | Tool argument | -32602 with message | SDK wraps tool exception |
-| Tool execution | -32603 with detail | SDK wraps tool exception |
+| Tool user-error string | Returned as success result (string in content[0].text) | Same — SDK sees a normal string return, no error code |
+| Tool throws exception | -32603 with detail | SDK wraps tool exception as -32603 |
 | Tool timeout | `Task.Run().WaitAsync(timeout)` | SDK CancellationToken |
 | Mutation race | `_mutationLock` serializes | N/A (sequential stdio) |
 | DLL load failure | N/A (loaded by dnSpy) | Fail-fast at startup, exit code 3 |
@@ -562,27 +563,54 @@ Deterministic test data — no dependency on system DLLs.
 
 ## Migration Plan
 
-19-step sequence (high-level; full implementation plan in subsequent writing-plans output):
+Phases (high-level; full step-by-step plan in subsequent writing-plans output):
 
-1. Create `dnSpy.MCP.Core.csproj` (empty lib, net10.0, no WPF)
-2. Move `Mcp/JsonRpc.cs`, `BufferedLineReader.cs` to Core. **Split `McpLogger.cs`**: file-logging half moves to Core, dnSpy Output Pane half stays in Extension as `DnSpyLogSink` adapter (it depends on `IOutputService` + `Application.Current.Dispatcher`).
-3. Create 5 Abstraction interfaces
-4. Create `Adapters/DnSpyDecompilerSourceProvider.cs` in Core (shared)
-5. Refactor `MethodResolver.cs` ctor → `IAssemblyLoader`
-6. Move + refactor 13 tool classes to instance pattern
-7. Refactor `ToolRegistry` to support instance + static mix
-8. Refactor `McpServerHost` ctor to accept `ToolRegistry`
-9. Create `McpContext` class
-10. Create `dnSpy.MCP.Headless.csproj` (Exe)
-11. Create 5 Headless adapters
-12. Create `Program.cs` + `CliOptions.cs` + `AutoToolRegistration.cs`
-13. Refactor `TheExtension.OnEvent` to compose `McpContext` + `ToolRegistry`
-14. Create 4 Extension adapters
-15. Keep `TreeViewTools.cs` static in Extension project
-16. Update `dnSpy.MCP.csproj` references (add Core ref, remove moved sources)
-17. Update `scripts/verify-tool-count.ps1` regex (`public string` not `public static string`)
-18. Create `dnSpy.MCP.Core.Tests.csproj`, migrate existing tests + add new tool tests
-19. Update `scripts/build.ps1` to build solution instead of single project; update `build.yml`
+**Phase 0 — Solution skeleton** (no logic changes; establish build graph)
+1. Create empty `dnspy_mcp.sln` with existing `dnSpy.MCP.csproj` + `dnSpy.MCP.Tests.csproj` (verify existing build still works through solution)
+2. Create `src/dnSpy.MCP.Core/dnSpy.MCP.Core.csproj` (empty lib, net10.0, no WPF). `dotnet sln add` it.
+3. Add `<ProjectReference>` from `dnSpy.MCP.csproj` → `dnSpy.MCP.Core.csproj`. Verify build.
+
+**Phase 1 — Core abstractions** (no breaking changes to Extension yet)
+4. Create 5 Abstraction interfaces (`IAssemblyLoader`, `ISourceDecompiler`, `IUIThreadScheduler`, `ILogSink`, `ITreeRefreshNotifier`) + records (`LoadResult`, `LoadedModule`)
+5. Create `Adapters/DnSpyDecompilerSourceProvider.cs` (shared, depends only on dnSpy.Contracts)
+6. Create `Mcp/McpContext.cs` instance class
+7. Create `Helpers/MethodResolver.cs` in Core with ctor accepting `IAssemblyLoader` (copy from Extension, change ctor param)
+8. Move `Mcp/JsonRpc.cs`, `Mcp/BufferedLineReader.cs` to Core (verbatim). **Split `Mcp/McpLogger.cs`**: file-logging half moves to Core, dnSpy Output Pane half stays in Extension.
+9. **Checkpoint**: `dotnet build dnSpy.MCP.Core.csproj` should pass with no tools yet, just infra.
+
+**Phase 2 — Tool classes migration** (10 sub-steps, one per tool class batch)
+10. Move + refactor tool classes to Core, batched by complexity:
+    - Batch A (pure dnlib, trivial): `AnalysisTools`, `IlDisplayTools`, `TypeInspectorTools`, `AttributeTools`, `ConstantTools`, `NamespaceTools` (6 files, ~600 LOC)
+    - Batch B (use resolver): `SearchTools`, `XrefTools` (2 files, ~250 LOC)
+    - Batch C (use loader + decompiler): `DecompilerTools`, `AssemblyTools`, `ResourceTools` (3 files, ~460 LOC)
+    - Batch D (mutation, use tree refresh): `IlPatchTools`, `RenameTools` (2 files, ~560 LOC)
+    Each batch: convert `static class` → `sealed class`, add ctor(McpContext), replace `DnSpyContext.X` → `_ctx.X`. **After each batch: build Core, fix any errors before next batch.**
+
+**Phase 3 — ToolRegistry refactor** (depends on McpContext from Phase 1)
+11. Refactor `ToolRegistry` to support instance + static mix (`ctor(McpContext, params Assembly[])`, hybrid `IsToolClass` filter). Move to Core.
+12. **Checkpoint**: write minimal Extension adapter stubs returning `null`/empty (e.g. `class StubAssemblyLoader : IAssemblyLoader { ... }`) to let Extension compile temporarily. This decouples Extension refactor from Headless work.
+
+**Phase 4 — Extension rewire** (depends on Core being complete)
+13. Create Extension adapters: `DnSpyAssemblyLoader`, `WpfUIThreadScheduler`, `DnSpyLogSink`, `DnSpyTreeRefreshNotifier` (replace stubs from step 12)
+14. Refactor `TheExtension.OnEvent` to compose McpContext + ToolRegistry
+15. Update `McpServerHost` ctor to accept `ToolRegistry` (passed from TheExtension)
+16. Delete old `DnSpyContext.cs`, `MethodResolver.cs` (moved), `McpLogger.cs` (split), `TextDecompilerOutput.cs` (replaced by dnSpy's)
+17. **Checkpoint**: `dotnet build` solution — Extension should run inside dnSpy with all 38 tools available.
+
+**Phase 5 — Headless project** (depends on Core being complete)
+18. Create `src/dnSpy.MCP.Headless/dnSpy.MCP.Headless.csproj` (Exe, refs Core + dnSpy DLLs + MCP SDK)
+19. Create 5 Headless adapters: `DnlibAssemblyLoader`, `DnSpyDecompilerLoader`, `InlineUIThreadScheduler`, `StderrLogSink`, `NoOpTreeRefreshNotifier`
+20. Create `Program.cs` + `CliOptions.cs` + `Adapters/AutoToolRegistration.cs`
+21. **Checkpoint**: `dotnet run --project dnSpy.MCP.Headless -- --help` works; manual test `initialize` / `tools/list` via stdin.
+
+**Phase 6 — Tests + CI**
+22. Create `tests/dnSpy.MCP.Core.Tests/dnSpy.MCP.Core.Tests.csproj` (xUnit + FluentAssertions + Moq)
+23. Migrate existing tests (`JsonRpcTests`, `BufferedLineReaderTests`, `ToolRegistryTests`) to Core.Tests
+24. Add new unit tests for 13 tool classes (mock 5 interfaces)
+25. Create `tests/dnSpy.MCP.Headless.Tests/` + `tests/TestData/SampleLibrary/` (fixture project)
+26. Add E2E test: spawn Headless exe, JSON-RPC via stdin
+27. Update `scripts/verify-tool-count.ps1` regex (`public string` not `public static string`), check both Core tools dir + Extension tools dir
+28. Update `scripts/build.ps1` to build solution instead of single project; update `build.yml` matrix
 
 ### Tool count after migration
 
@@ -602,8 +630,9 @@ includes its own 2 tools via separate scan.
 | Test projects | ~800 | new unit + E2E + fixture |
 | **Total** | **~4,942** | vs current ~2,500 |
 
-Net new code: ~2,400 LOC, of which ~1,500 is straight refactor (static → instance).
-The remaining ~900 LOC is the actual headless capability + testability infrastructure.
+Net new code: ~2,400 LOC, of which ~1,500 is mechanical refactor (static → instance,
+no new behavior). The actual new capability is ~900 LOC (5 Headless adapters,
+shared decompiler bridge, CLI parsing, AutoToolRegistration, tests).
 
 ## Open questions for implementation phase
 
