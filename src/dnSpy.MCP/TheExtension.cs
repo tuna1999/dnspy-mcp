@@ -7,7 +7,8 @@ using dnSpy.Contracts.Documents;
 using dnSpy.Contracts.Extension;
 using dnSpy.Contracts.Output;
 using dnSpy.Contracts.Scripting;
-using dnSpy.MCP.Mcp;
+using dnSpy.MCP.Adapters;
+using dnSpy.MCP.Core.Mcp;
 using dnSpy.MCP.Settings;
 
 namespace dnSpy.MCP {
@@ -83,7 +84,16 @@ namespace dnSpy.MCP {
                 return;
             }
 
-            _serverHost = new McpServerHost(Settings!);
+            // Build McpContext + ToolRegistry using stubs (temporary — Phase 4 replaces 4 of 5
+            // stubs with real implementations backed by DnSpyContext; WpfUIThreadScheduler stays).
+            var stubCtx = new McpContext(
+                new StubAssemblyLoader(),
+                new StubSourceDecompiler(),
+                new WpfUIThreadScheduler(),
+                new StubLogSink(),
+                new StubTreeRefreshNotifier());
+            var stubRegistry = new ToolRegistry(stubCtx, typeof(McpContext).Assembly);
+            _serverHost = new McpServerHost(Settings!, stubRegistry);
             Task.Run(async () => {
                 try {
                     await _serverHost.StartAsync();
