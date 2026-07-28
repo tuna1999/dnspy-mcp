@@ -8,6 +8,7 @@ using dnSpy.Contracts.Extension;
 using dnSpy.Contracts.Output;
 using dnSpy.Contracts.Scripting;
 using dnSpy.MCP.Adapters;
+using dnSpy.MCP.Core.Adapters;
 using dnSpy.MCP.Core.Mcp;
 using dnSpy.MCP.Settings;
 
@@ -89,7 +90,7 @@ namespace dnSpy.MCP {
             var uiScheduler = new WpfUIThreadScheduler();
             var stubCtx = new McpContext(
                 new DnSpyAssemblyLoader(DocumentService!, uiScheduler),
-                new StubSourceDecompiler(),
+                new DnSpyDecompilerSourceProvider(DecompilerService!.Decompiler),
                 uiScheduler,
                 new StubLogSink(),
                 new StubTreeRefreshNotifier());
