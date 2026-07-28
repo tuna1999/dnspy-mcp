@@ -229,7 +229,12 @@ namespace dnSpy.MCP.Core.Mcp {
             public bool Required { get; init; }
         }
 
-        internal static string ToSnakeCase(string name) {
+        /// <summary>
+        /// Converts PascalCase method names to snake_case for MCP tool naming.
+        /// Public so the Headless AutoToolRegistration adapter can reuse the same
+        /// convention without duplicating the logic.
+        /// </summary>
+        public static string ToSnakeCase(string name) {
             var sb = new System.Text.StringBuilder(name.Length + 10);
             for (int i = 0; i < name.Length; i++) {
                 var c = name[i];

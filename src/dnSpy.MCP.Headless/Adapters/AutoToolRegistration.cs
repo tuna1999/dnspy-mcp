@@ -1,0 +1,51 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Reflection;
+using dnSpy.MCP.Core.Mcp;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Server;
+
+namespace dnSpy.MCP.Headless.Adapters;
+
+/// <summary>
+/// Scans Core tool classes via reflection and registers each [Description] method
+/// as an MCP tool. Auto-discovers future Core tools without manual wrapper maintenance.
+/// </summary>
+public static class AutoToolRegistration {
+    public static void RegisterAll(IMcpServerBuilder builder, McpContext ctx) {
+        var tools = new List<McpServerTool>();
+        var coreAsm = typeof(McpContext).Assembly;
+        foreach (var type in coreAsm.GetTypes()) {
+            if (!IsToolClass(type)) continue;
+
+            object? instance = null;
+            var ctor = type.GetConstructor(new[] { typeof(McpContext) });
+            if (ctor is null) continue;  // skip Extension-only static tools (TreeViewTools)
+            instance = ctor.Invoke(new object[] { ctx });
+
+            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance)) {
+                var desc = method.GetCustomAttribute<DescriptionAttribute>();
+                if (desc is null) continue;
+
+                var toolName = ToolRegistry.ToSnakeCase(method.Name);
+                var mcpTool = McpServerTool.Create(method, instance,
+                    new McpServerToolCreateOptions {
+                        Name = toolName,
+                        Description = desc.Description,
+                    });
+                tools.Add(mcpTool);
+            }
+        }
+
+        // SDK 1.4.0 has no single-tool WithTools overload; batch-register the collection.
+        builder.WithTools(tools);
+    }
+
+    private static bool IsToolClass(Type type) {
+        if (type.Namespace is null || !type.Namespace.StartsWith("dnSpy.MCP.Tools"))
+            return false;
+        if (!type.IsClass || type.IsAbstract) return false;
+        return type.GetConstructor(new[] { typeof(McpContext) }) != null;
+    }
+}
