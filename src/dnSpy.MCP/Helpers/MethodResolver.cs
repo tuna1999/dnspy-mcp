@@ -4,6 +4,7 @@ using System.Linq;
 using dnlib.DotNet;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Documents;
+using dnSpy.MCP.Mcp;
 
 namespace dnSpy.MCP.Helpers {
     /// <summary>
@@ -105,6 +106,12 @@ namespace dnSpy.MCP.Helpers {
         /// Flexible method resolution: tries hex token, plain token, full name, then fallback short name.
         /// Returns the first match found.
         /// </summary>
+        /// <remarks>
+        /// The short-name fallback returns the <b>first</b> method whose name matches. For common
+        /// names (ToString, Equals, Dispose, etc.) there may be many matches across types —
+        /// callers should prefer a full name or token. When the fallback finds more than one
+        /// candidate, a warning is logged so ambiguous resolution is diagnosable.
+        /// </remarks>
         public MethodDef? ResolveMethodFlexible(string identifier, string? assemblyName = null) {
             MethodDef? method = null;
 
@@ -120,22 +127,53 @@ namespace dnSpy.MCP.Helpers {
             if (method == null)
                 method = ResolveMethod(identifier, assemblyName);
 
-            if (method == null) {
-                var name = identifier.Contains('.')
-                    ? identifier.Split('.').Last()
-                    : identifier;
-                foreach (var mod in GetModules(assemblyName)) {
-                    foreach (var type in mod.GetTypes()) {
-                        foreach (var m in type.Methods) {
-                            if (UTF8String.Equals(m.Name, name))
-                                return m;
-                        }
-                    }
-                }
-            }
+            if (method == null)
+                method = ResolveByShortName(identifier, assemblyName);
 
             return method;
         }
+
+        /// <summary>
+        /// Last-resort resolution: matches a bare method name (or the trailing segment of a
+        /// dotted identifier) against every method in scope. Returns the first match and logs
+        /// a warning if more than one candidate exists, since the result is ambiguous.
+        /// </summary>
+        private MethodDef? ResolveByShortName(string identifier, string? assemblyName) {
+            var name = identifier.Contains('.')
+                ? identifier.Split('.').Last()
+                : identifier;
+
+            MethodDef? first = null;
+            var matchCount = 0;
+            foreach (var mod in GetModules(assemblyName)) {
+                foreach (var type in mod.GetTypes()) {
+                    foreach (var m in type.Methods) {
+                        if (!UTF8String.Equals(m.Name, name))
+                            continue;
+                        matchCount++;
+                        first ??= m;
+                        // Keep counting to report ambiguity, but stop after a generous cap so a
+                        // pathological assembly can't make this loop expensive. The cap is high
+                        // enough that any real-world ambiguity is still flagged.
+                        if (matchCount >= ShortNameAmbiguityCap)
+                            goto done;
+                    }
+                }
+            }
+            done:
+
+            if (first != null && matchCount > 1) {
+                McpLogger.Warn(
+                    $"Method '{identifier}' resolved by short-name fallback to {first.FullName}, " +
+                    $"but {matchCount}+ candidates matched{(matchCount >= ShortNameAmbiguityCap ? " (cap reached — may be more)" : "")}. " +
+                    "Use the full name ('Namespace.Class::Method') or a metadata token for an unambiguous result.");
+            }
+
+            return first;
+        }
+
+        /// <summary>Stops the ambiguity count after this many matches; keeps the fallback cheap.</summary>
+        const int ShortNameAmbiguityCap = 64;
 
         /// <summary>
         /// Finds types matching a pattern

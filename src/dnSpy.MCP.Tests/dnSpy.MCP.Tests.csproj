@@ -27,22 +27,25 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- dnSpy contract DLLs needed transitively by the main project. -->
+    <!-- dnSpy contract DLLs needed transitively by the main project.
+         Private=true so they are copied to the test output dir — unlike the
+         main project (which runs inside dnSpy where these already exist),
+         the test host runs standalone and must be able to resolve them. -->
     <Reference Include="dnSpy.Contracts.DnSpy">
       <HintPath>..\..\deps\dnSpy.Contracts.DnSpy.dll</HintPath>
-      <Private>false</Private>
+      <Private>true</Private>
     </Reference>
     <Reference Include="dnSpy.Contracts.Logic">
       <HintPath>..\..\deps\dnSpy.Contracts.Logic.dll</HintPath>
-      <Private>false</Private>
+      <Private>true</Private>
     </Reference>
     <Reference Include="ICSharpCode.Decompiler">
       <HintPath>..\..\deps\ICSharpCode.Decompiler.dll</HintPath>
-      <Private>false</Private>
+      <Private>true</Private>
     </Reference>
     <Reference Include="dnlib">
       <HintPath>..\..\deps\dnlib.dll</HintPath>
-      <Private>false</Private>
+      <Private>true</Private>
     </Reference>
   </ItemGroup>
 

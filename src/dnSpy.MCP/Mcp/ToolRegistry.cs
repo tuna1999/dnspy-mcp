@@ -150,34 +150,36 @@ namespace dnSpy.MCP.Mcp {
                 _ => Array.Empty<string>()
             };
 
-            private static object? ConvertJsonValue(JsonNode? node, Type targetType, string paramName) {
+            internal static object? ConvertJsonValue(JsonNode? node, Type targetType, string paramName) {
                 if (node == null) return null;
 
-                // Handle nullable wrapper types
-                var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+                // Match against the underlying type so nullable wrappers (int?, bool?, etc.) coerce
+                // the same way as their non-nullable counterparts. Without this, an int? parameter
+                // would fall through to the rejection branch for every valid value.
+                var matchType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 
                 return node switch {
-                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out string? s) => s,
-                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out int n) => n.ToString(),
-                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out long l) => l.ToString(),
-                    JsonValue jv when targetType == typeof(string) && jv.TryGetValue(out double d) => d.ToString(),
-                    JsonValue jv when targetType == typeof(int) && jv.TryGetValue(out int n) => n,
-                    JsonValue jv when targetType == typeof(int) && jv.TryGetValue(out long l) => (int)l,
-                    JsonValue jv when targetType == typeof(int) && jv.TryGetValue(out double d) => (int)d,
-                    JsonValue jv when targetType == typeof(long) && jv.TryGetValue(out long l) => l,
-                    JsonValue jv when targetType == typeof(long) && jv.TryGetValue(out int n) => (long)n,
-                    JsonValue jv when targetType == typeof(bool) && jv.TryGetValue(out bool b) => b,
-                    JsonValue jv when targetType == typeof(double) && jv.TryGetValue(out double d) => d,
-                    JsonValue jv when targetType == typeof(double) && jv.TryGetValue(out int n) => (double)n,
-                    JsonValue jv when targetType == typeof(float) && jv.TryGetValue(out double d) => (float)d,
+                    JsonValue jv when matchType == typeof(string) && jv.TryGetValue(out string? s) => s,
+                    JsonValue jv when matchType == typeof(string) && jv.TryGetValue(out int n) => n.ToString(),
+                    JsonValue jv when matchType == typeof(string) && jv.TryGetValue(out long l) => l.ToString(),
+                    JsonValue jv when matchType == typeof(string) && jv.TryGetValue(out double d) => d.ToString(),
+                    JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out int n) => n,
+                    JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out long l) => (int)l,
+                    JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out double d) => (int)d,
+                    JsonValue jv when matchType == typeof(long) && jv.TryGetValue(out long l) => l,
+                    JsonValue jv when matchType == typeof(long) && jv.TryGetValue(out int n) => (long)n,
+                    JsonValue jv when matchType == typeof(bool) && jv.TryGetValue(out bool b) => b,
+                    JsonValue jv when matchType == typeof(double) && jv.TryGetValue(out double d) => d,
+                    JsonValue jv when matchType == typeof(double) && jv.TryGetValue(out int n) => (double)n,
+                    JsonValue jv when matchType == typeof(float) && jv.TryGetValue(out double d) => (float)d,
                     // No coercion fallback: a JSON value that doesn't match the declared parameter
                     // type is a caller error. Fail with a clear message instead of silently passing
                     // jv.ToString()/node.ToString() through to MethodInfo.Invoke, which would throw an
                     // opaque "cannot convert" ArgumentException much later.
                     JsonValue jv => throw new ArgumentException(
-                        $"Parameter '{paramName}' expects {targetType.Name} but received JSON value '{jv}'."),
+                        $"Parameter '{paramName}' expects {matchType.Name} but received JSON value '{jv}'."),
                     _ => throw new ArgumentException(
-                        $"Parameter '{paramName}' expects {targetType.Name} but received {node.GetPath()}.")
+                        $"Parameter '{paramName}' expects {matchType.Name} but received {node.GetPath()}.")
                 };
             }
         }

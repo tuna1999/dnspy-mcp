@@ -37,11 +37,18 @@ namespace dnSpy.MCP.Settings {
 		}
 		string apiToken = string.Empty;
 
+		/// <summary>
+		/// CORS origins allowed to call the server. Empty by default (CORS disabled —
+		/// no Access-Control-Allow-Origin header emitted). Set to a specific origin (e.g.
+		/// "http://localhost:3000") or comma-separated list for browser clients. Avoid "*"
+		/// when <see cref="Host"/> is bound to a non-loopback address: a wildcard combined
+		/// with a token-bearing API lets any website attempt cross-origin calls.
+		/// </summary>
 		public string AllowedOrigins {
 			get => allowedOrigins;
 			set { if (allowedOrigins != value) { allowedOrigins = value; OnPropertyChanged(nameof(AllowedOrigins)); } }
 		}
-		string allowedOrigins = "*";
+		string allowedOrigins = string.Empty;
 
 		public int LogLevel {
 			get => logLevel;

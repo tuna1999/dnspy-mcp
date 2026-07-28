@@ -163,7 +163,7 @@ namespace dnSpy.MCP.Tools {
 	}}";
         }
 
-        private static string MakeSafeIdentifier(string name) {
+        internal static string MakeSafeIdentifier(string name) {
             if (string.IsNullOrWhiteSpace(name))
                 return "arg";
 
