@@ -7,15 +7,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Setup (one-time)
 ```powershell
 mkdir deps
-# Copy these DLLs from a dnSpy installation's bin/ folder:
+# Option A (recommended): run the sync script against a local dnSpy install
+pwsh scripts/sync-deps.ps1  # uses D:\ProgramFiles\StandaloneTools\RETools\dnSpy\win64\bin by default
+pwsh scripts/sync-deps.ps1 -DnSpyBin "C:\path\to\dnSpy\bin"  # override path
+
+# Option B (manual): copy these DLLs from a dnSpy installation's bin/ folder:
 #   dnSpy.Contracts.DnSpy.dll
 #   dnSpy.Contracts.Logic.dll
-#   ICSharpCode.Decompiler.dll
 #   dnlib.dll
-# Headless-only (for dnSpy.MCP.Headless project):
+#   ICSharpCode.Decompiler.dll
+#   # Headless-only:
 #   dnSpy.Decompiler.dll
 #   dnSpy.Decompiler.ILSpy.Core.dll
-#   dnSpy.Decompiler.ILSpy.dll
 #   ICSharpCode.NRefactory.dll
 #   ICSharpCode.NRefactory.CSharp.dll
 ```
