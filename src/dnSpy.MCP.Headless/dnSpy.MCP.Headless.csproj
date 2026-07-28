@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>dnspy-mcp-headless</AssemblyName>
+    <Nullable>enable</Nullable>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>2.0.0</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DnSpyBin>..\..\deps</DnSpyBin>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\dnSpy.MCP.Core\dnSpy.MCP.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- dnSpy decompiler DLLs (vendored) -->
+    <Reference Include="dnSpy.Contracts.DnSpy">
+      <HintPath>$(DnSpyBin)\dnSpy.Contracts.DnSpy.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="dnSpy.Contracts.Logic">
+      <HintPath>$(DnSpyBin)\dnSpy.Contracts.Logic.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="dnSpy.Decompiler">
+      <HintPath>$(DnSpyBin)\dnSpy.Decompiler.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="dnSpy.Decompiler.ILSpy.Core">
+      <HintPath>$(DnSpyBin)\dnSpy.Decompiler.ILSpy.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="ICSharpCode.Decompiler">
+      <HintPath>$(DnSpyBin)\ICSharpCode.Decompiler.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="ICSharpCode.NRefactory">
+      <HintPath>$(DnSpyBin)\ICSharpCode.NRefactory.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="ICSharpCode.NRefactory.CSharp">
+      <HintPath>$(DnSpyBin)\ICSharpCode.NRefactory.CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="dnlib">
+      <HintPath>$(DnSpyBin)\dnlib.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>
