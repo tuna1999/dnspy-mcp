@@ -133,6 +133,8 @@ namespace dnSpy.MCP.Mcp {
                 "typeFullname" or "typeFullName" => new[] { "typeName", "type_name", "type", "fullTypeName", "type_fullname", "type_full_name" },
                 // Method identification
                 "methodFullname" or "methodFullnameOrToken" => new[] { "methodName", "method_name", "method", "methodIdentifier", "method_identifier" },
+                // Member identification (get_xrefs_to)
+                "memberFullName" => new[] { "member", "member_name", "memberName", "target" },
                 // Assembly scoping
                 "assemblyName" => new[] { "assembly", "assembly_name", "module", "moduleName" },
                 // Attribute target
