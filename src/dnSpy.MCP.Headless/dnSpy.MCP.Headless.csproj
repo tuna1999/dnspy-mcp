@@ -7,8 +7,13 @@
     <!-- net10.0-windows: dnSpy.Contracts.Decompiler is Windows-only by design
          (CA1416). Headless ships no UI, but the decompiler backend forces Windows. -->
     <TargetFramework>net10.0-windows</TargetFramework>
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- MSB3277: .NET 10 SDK ships WindowsBase 4.0.0.0 in the Core App ref pack
+         and dnSpy.Contracts (net10.0-windows) requires 10.0.0.0 — assembly
+         unification can't reconcile them. Reference is build-time only; runtime
+         resolves via the WindowsDesktop App pack. Suppressed, not actionable. -->
+    <NoWarn>$(NoWarn);1591;MSB3277</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -48,9 +48,9 @@ GitHub Actions (`build.yml`) auto-downloads dnSpy deps and runs `dotnet build dn
 
 ### Build output
 
-- **Core lib**: `src/dnSpy.MCP.Core/bin/Release/net10.0/dnSpy.MCP.Core.dll`
+- **Core lib**: `src/dnSpy.MCP.Core/bin/Release/net10.0-windows/dnSpy.MCP.Core.dll`
 - **Extension DLL**: `src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll`
-- **Headless exe**: `src/dnSpy.MCP.Headless/bin/Release/net10.0/dnspy-mcp-headless.dll`
+- **Headless exe**: `src/dnSpy.MCP.Headless/bin/Release/net10.0-windows/dnspy-mcp-headless.dll`
 - **Deploy to dnSpy**: copy `dnSpy.MCP.x.dll`, `.deps.json`, `.pdb`, AND `dnSpy.MCP.Core.dll` to `<dnSpy>/bin/Extensions/`
 
 ## Project Layout
@@ -59,7 +59,7 @@ GitHub Actions (`build.yml`) auto-downloads dnSpy deps and runs `dotnet build dn
 dnspy_mcp/
 ├── dnspy_mcp.sln                # Solution referencing all 3 projects + tests
 ├── src/
-│   ├── dnSpy.MCP.Core/          # Pure analysis library (no WPF, net10.0)
+│   ├── dnSpy.MCP.Core/          # Pure analysis library (no WPF, net10.0-windows)
 │   │   ├── Abstractions/        # 5 host-agnostic interfaces
 │   │   │   ├── IAssemblyLoader.cs
 │   │   │   ├── ISourceDecompiler.cs
@@ -111,7 +111,7 @@ dnspy_mcp/
 │   │   └── Tools/
 │   │       └── TreeViewTools.cs  # Extension-only (2 tools: get_selected_node, refresh_ui)
 │   │
-│   └── dnSpy.MCP.Headless/      # Standalone exe (no WPF, net10.0) — refs Core + MCP SDK
+│   └── dnSpy.MCP.Headless/      # Standalone exe (no WPF, net10.0-windows) — refs Core + MCP SDK
 │       ├── Program.cs            # Host + DI + CLI parse + stdio MCP transport
 │       ├── CliOptions.cs         # --load / --config / --help args
 │       └── Adapters/             # Headless-specific adapter implementations
@@ -133,7 +133,7 @@ dnspy_mcp/
 
 ### Three-Project Structure (B3' DI-based Hybrid)
 
-- **`dnSpy.MCP.Core`** (lib, net10.0, no WPF): pure analysis library with 5 abstraction interfaces, `McpContext` composition root, 13 instance tool classes, `ToolRegistry` reflection discovery, `McpServerHost` TCP transport.
+- **`dnSpy.MCP.Core`** (lib, net10.0-windows, no WPF): pure analysis library with 5 abstraction interfaces, `McpContext` composition root, 13 instance tool classes, `ToolRegistry` reflection discovery, `McpServerHost` TCP transport.
 - **`dnSpy.MCP`** (Extension, net10.0-windows, WPF): MEF entry, composes `McpContext` with dnSpy-backed adapters, references Core. Hosts the in-dnSpy MCP server.
 - **`dnSpy.MCP.Headless`** (Exe, net10.0-windows, no WPF): standalone stdio MCP server for batch analysis. Uses MCP SDK + dnSpy decompiler DLLs via reflection (`IDecompilerProvider`).
 

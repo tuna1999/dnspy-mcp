@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Text;
 using dnlib.DotNet;
+
 using dnSpy.MCP.Core.Mcp;
 
 namespace dnSpy.MCP.Core.Tools {
@@ -108,7 +109,7 @@ namespace dnSpy.MCP.Core.Tools {
         /// <summary>
         /// Reads PE headers from the on-disk file via <see cref="PEReader"/>. The previous
         /// Extension implementation read them from dnSpy's <c>IDsDocument.PEImage</c>, which is
-        /// not exposed by <see cref="LoadedModule"/>. For in-memory modules <paramref name="path"/>
+        /// not exposed by <see cref="Abstractions.LoadedModule"/>. For in-memory modules <paramref name="path"/>
         /// is empty and we skip PE header output rather than crash on <see cref="File.OpenRead"/>.
         /// </summary>
         private static void AppendPeHeaders(StringBuilder sb, string path) {

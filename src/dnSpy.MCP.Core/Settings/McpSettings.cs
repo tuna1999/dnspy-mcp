@@ -7,8 +7,8 @@ using dnSpy.Contracts.MVVM;
 namespace dnSpy.MCP.Settings {
 	/// <summary>
 	/// Settings POCO. Host-agnostic — used by both the dnSpy Extension (via the
-	/// MEF-exported <see cref="McpSettingsImpl"/> subclass) and the Headless host.
-	/// All property setters fire <see cref="ViewModelBase.OnPropertyChanged"/> so the
+	/// MEF-exported McpSettingsImpl subclass) and the Headless host.
+	/// All property setters fire <see cref="ViewModelBase.OnPropertyChanged(string)"/> so the
 	/// dnSpy Options dialog binds correctly; the Headless host simply ignores the events.
 	/// </summary>
 	public class McpSettings : ViewModelBase {

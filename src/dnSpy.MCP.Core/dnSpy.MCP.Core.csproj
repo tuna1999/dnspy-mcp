@@ -3,10 +3,18 @@
   <PropertyGroup>
     <AssemblyName>dnSpy.MCP.Core</AssemblyName>
     <Nullable>enable</Nullable>
-    <TargetFramework>net10.0</TargetFramework>
-    <Version>2.0.0</Version>
+    <!-- net10.0-windows: Core calls Windows-only APIs (dnSpy.Contracts.Decompiler.IDecompiler,
+         ViewModelBase.OnPropertyChanged) when wired to dnSpy; targeting -windows silences
+         CA1416 (198 false-positives in CI logs) and resolves the WindowsBase 4.0 vs 10.0
+         conflict from MSB3277. No netfx or WPF use; the suffix only enables the analyzer. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Version>2.0.1</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>
+    <!-- MSB3277: .NET 10 SDK ships WindowsBase 4.0.0.0 in the Core App ref pack
+         and dnSpy.Contracts (net10.0-windows) requires 10.0.0.0 — assembly
+         unification can't reconcile them. Reference is build-time only; runtime
+         resolves via the WindowsDesktop App pack. Suppressed, not actionable. -->
+    <NoWarn>$(NoWarn);1591;MSB3277</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
