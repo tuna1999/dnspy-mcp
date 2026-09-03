@@ -37,22 +37,27 @@ public sealed class CliOptions {
     }
 
     /// <summary>Expand any glob patterns in PreLoads into concrete file paths.</summary>
-    public IEnumerable<string> ExpandLoads() {
+    public IReadOnlyList<string> ExpandLoads() {
+        var paths = new List<string>();
         foreach (var pattern in PreLoads) {
             var dir = Path.GetDirectoryName(pattern);
             var file = Path.GetFileName(pattern);
-            if (dir is null || file.Length == 0) {
-                if (File.Exists(pattern)) yield return pattern;
+            // Path.GetDirectoryName("*.dll") returns "" (empty string), not null —
+            // a null-only check would pass it through to Directory.GetFiles("", ...)
+            // which throws ArgumentException. Catch both null and empty.
+            if (string.IsNullOrEmpty(dir) || file.Length == 0) {
+                if (File.Exists(pattern)) paths.Add(pattern);
                 continue;
             }
             if (file.Contains('*') || file.Contains('?')) {
                 foreach (var f in Directory.GetFiles(dir, file, SearchOption.TopDirectoryOnly))
-                    yield return f;
+                    paths.Add(f);
             }
             else if (File.Exists(pattern)) {
-                yield return pattern;
+                paths.Add(pattern);
             }
         }
+        return paths;
     }
 
     public static void PrintHelp() {

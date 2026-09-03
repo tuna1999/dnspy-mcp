@@ -25,7 +25,8 @@ catch (ArgumentException ex) {
 }
 
 // Validate pre-load paths exist before starting the server
-foreach (var path in cli.ExpandLoads()) {
+var preLoadPaths = cli.ExpandLoads();
+foreach (var path in preLoadPaths) {
     if (!File.Exists(path)) {
         Console.Error.WriteLine($"Error: --load file not found: {path}");
         return 2;
@@ -46,7 +47,7 @@ catch (Exception ex) {
 // Build McpContext eagerly — needed for AutoToolRegistration before DI container builds
 var uiScheduler = new InlineUIThreadScheduler();
 var loader = new DnlibAssemblyLoader();
-foreach (var path in cli.ExpandLoads())
+foreach (var path in preLoadPaths)
     loader.Load(path);
 
 var ctx = new McpContext(
@@ -67,7 +68,17 @@ builder.Logging.AddConsole(options => {
 builder.Services.AddSingleton(ctx);
 
 var mcpBuilder = builder.Services.AddMcpServer().WithStdioServerTransport();
-AutoToolRegistration.RegisterAll(mcpBuilder, ctx);
+
+// Serialize destructive tool calls (rename_*, update_*, patch_*) so parallel batch
+// requests can't race on shared ModuleDef metadata. Mirrors McpServerHost._mutationLock
+// in the Extension HTTP transport — both share ToolRegistry.IsMutationTool so the
+// prefix list is the single source of truth.
+var mutationLock = MutationLockFilter.CreateLock();
+var filters = new ModelContextProtocol.Server.McpServerFilters();
+filters.Request.CallToolFilters.Add(MutationLockFilter.Build(mutationLock));
+builder.Services.Configure<ModelContextProtocol.Server.McpServerOptions>(o => o.Filters = filters);
+
+AutoToolRegistration.RegisterCoreTools(mcpBuilder, ctx);
 
 try {
     await builder.Build().RunAsync();

@@ -11,9 +11,15 @@ namespace dnSpy.MCP.Headless.Adapters;
 /// <summary>
 /// Scans Core tool classes via reflection and registers each [Description] method
 /// as an MCP tool. Auto-discovers future Core tools without manual wrapper maintenance.
+///
+/// "Core" prefix reflects scope: only Core's instance tool classes are registered.
+/// Extension-only static tools (e.g. TreeViewTools for get_selected_node, refresh_u_i)
+/// are intentionally skipped — they have no McpContext ctor and need WPF, neither of
+/// which exist in the headless stdio transport. The Extension transport registers
+/// those via the in-tree ToolRegistry instead.
 /// </summary>
 public static class AutoToolRegistration {
-    public static void RegisterAll(IMcpServerBuilder builder, McpContext ctx) {
+    public static void RegisterCoreTools(IMcpServerBuilder builder, McpContext ctx) {
         var tools = new List<McpServerTool>();
         var coreAsm = typeof(McpContext).Assembly;
         foreach (var type in coreAsm.GetTypes()) {
@@ -43,7 +49,8 @@ public static class AutoToolRegistration {
     }
 
     private static bool IsToolClass(Type type) {
-        if (type.Namespace is null || !type.Namespace.StartsWith("dnSpy.MCP.Tools"))
+        if (type.Namespace is null ||
+            !(type.Namespace.StartsWith("dnSpy.MCP.Core.Tools") || type.Namespace.StartsWith("dnSpy.MCP.Tools")))
             return false;
         if (!type.IsClass || type.IsAbstract) return false;
         return type.GetConstructor(new[] { typeof(McpContext) }) != null;
