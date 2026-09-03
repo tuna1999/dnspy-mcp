@@ -4,14 +4,24 @@ MCP (Model Context Protocol) server extension for [dnSpy](https://github.com/dnS
 
 ## How It Works
 
+Two hosts share one tool core (`dnSpy.MCP.Core`):
+
 ```
-dnSpy loads extension → MCP Server menu → Start → HttpListener on :5150
-                                                        ↕
-                                              AI agent (Claude, etc.)
-                                              HTTP POST (JSON-RPC 2.0)
+┌─ Extension (in dnSpy) ─────────────────┐   ┌─ Headless (standalone exe) ─────────┐
+│ dnSpy loads extension → MCP Server     │   │ dotnet dnspy-mcp-headless.dll       │
+│ menu → Start → HttpListener on :5150   │   │ --load foo.dll (repeatable, globs)  │
+│              ↕                         │   │              ↕                      │
+│   AI agent — HTTP POST (JSON-RPC 2.0)  │   │   AI agent — stdio (MCP SDK)        │
+└────────────┬───────────────────────────┘   └──────────────┬──────────────────────┘
+             └──────────► dnSpy.MCP.Core ◄──────────────────┘
+                         (36 tools + decompiler bridge,
+                          output identical to dnSpy.exe)
 ```
 
-The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.NET Core or external dependencies required. AI agents connect via standard MCP protocol over HTTP.
+The extension runs inside dnSpy using `System.Net.HttpListener` (no ASP.NET Core
+conflicts). The headless binary is a standalone stdio MCP server for batch
+analysis — same tools, same decompiled output, no UI, no dnSpy install needed
+at analysis time (only the vendored decompiler DLLs in `deps/`).
 
 ## Tools (36)
 
@@ -98,17 +108,16 @@ The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.
 | `get_resource_data` | Raw bytes of a specific resource |
 | `get_metadata` | PE headers, MVID, runtime version, sections |
 
-## Quick Start
-
 ### Prerequisites
 
-- [dnSpy](https://github.com/dnSpyEx/dnSpy/releases) (.NET 8.0 build)
-- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- `deps/` folder with these DLLs copied from dnSpy:
-  - `dnSpy.Contracts.DnSpy.dll`
-  - `dnSpy.Contracts.Logic.dll`
-  - `ICSharpCode.Decompiler.dll`
-  - `dnlib.dll`
+- [dnSpy](https://github.com/dnSpyEx/dnSpy/releases) (.NET 10 build, v6.6.0+)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- `deps/` folder with these DLLs synced from a dnSpy install
+  (run `pwsh scripts/sync-deps.ps1 -DnSpyBin <dnSpy>\bin`):
+  - `dnSpy.Contracts.DnSpy.dll`, `dnSpy.Contracts.Logic.dll`
+  - `ICSharpCode.Decompiler.dll`, `dnlib.dll`
+  - Headless-only: `dnSpy.Decompiler.dll`, `dnSpy.Decompiler.ILSpy.Core.dll`,
+    `ICSharpCode.NRefactory.dll`, `ICSharpCode.NRefactory.CSharp.dll`
 
 ### Configure DnSpyBin path
 
@@ -127,39 +136,42 @@ dotnet build -p:DnSpyBin="D:\path\to\dnSpy\bin"
 ### Build & Deploy
 
 ```powershell
-# 1) Build only (Release mặc định)
-pwsh scripts/build.ps1
+# 1) Build the whole solution (Core + Extension + Headless + Tests)
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy"
 
 # 2) Clean + build
-pwsh scripts/build.ps1 -Clean
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Clean
 
-# 3) Build + deploy to staging (build/Extensions/)
-pwsh scripts/build.ps1 -Deploy
+# 3) Build + deploy extension to dnSpy
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy
 
-# 4) Build + deploy directly to dnSpy runtime
-pwsh scripts/build.ps1 -Deploy -DeployDir "D:\tools\dnSpy\Extensions"
+# 4) Build + publish headless binary to publish/headless/
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -PublishHeadless
 
 # 5) Override sang Debug khi cần debug
-pwsh scripts/build.ps1 -Configuration Debug -Deploy -DeployDir "D:\tools\dnSpy\Extensions"
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Configuration Debug -Deploy
 ```
 
-This builds the extension DLL and deploys it. **dnSpy must be closed** before running.
+The script syncs `deps/` from the dnSpy install, builds the solution, and
+deploys the extension. **dnSpy must be closed** before `-Deploy`.
 
 Options:
 ```powershell
-pwsh scripts/build.ps1 -Clean                        # Clean before build
-pwsh scripts/build.ps1 -Deploy                       # Deploy after build
-pwsh scripts/build.ps1 -DeployDir "<path>"          # Custom deploy target (used with -Deploy)
-pwsh scripts/build.ps1 -Configuration Debug          # Build Debug instead of Release
-pwsh scripts/build.ps1 -Configuration Release        # Build Release (default)
+-DnSpyPath "<path>"    # dnSpy install folder (required; used for deps sync + deploy)
+-Clean                 # Clean before build
+-Deploy                # Deploy extension after build (default target: <dnSpy>\bin\Extensions)
+-DeployDir "<path>"    # Custom deploy target (used with -Deploy)
+-PublishHeadless       # Also publish headless to publish/headless/
+-Configuration Debug   # Build Debug instead of Release
 ```
 
 ### Build output paths
 
-- Build output (Release default): `src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll`
-- Build output (Debug override): `src/dnSpy.MCP/bin/Debug/net8.0-windows/dnSpy.MCP.x.dll`
-- Staging deploy: `build/Extensions/dnSpy.MCP.x.dll`
-- Runtime deploy: `<dnSpy-folder>/Extensions/dnSpy.MCP.x.dll`
+- Extension (Release): `src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll`
+- Extension (Debug): `src/dnSpy.MCP/bin/Debug/net10.0-windows/dnSpy.MCP.x.dll`
+- Headless: `src/dnSpy.MCP.Headless/bin/Release/net10.0-windows/dnspy-mcp-headless.dll`
+  (published bundle: `publish/headless/`)
+- Runtime deploy: `<dnSpy>\bin\Extensions\dnSpy.MCP.x.dll`
 
 Only these files should be copied to dnSpy's `Extensions` folder:
 - `dnSpy.MCP.x.dll`
@@ -184,54 +196,93 @@ Do not copy the whole `build/Extensions` folder recursively into dnSpy (avoid ne
 | **Status** | Show running/stopped state and port |
 | **Show Log** | Display recent log entries |
 | **Clear Log** | Clear log file and output window |
-
-## Project Structure
-
 ```
 dnspy_mcp/
 ├── src/
-│   └── dnSpy.MCP/             # Standalone extension project (recommended)
-│       ├── Mcp/
-│       │   ├── McpServerHost.cs     # HTTP transport + JSON-RPC 2.0 dispatch
-│       │   ├── ToolRegistry.cs      # Reflection-based tool discovery
-│       │   ├── McpLogger.cs         # Logging: file + Output Window
-│       │   └── McpServerOptions.cs  # Port/host configuration
-│       ├── Tools/                   # 13 tool classes, 36 tools total
-│       ├── Helpers/
-│       │   ├── MethodResolver.cs    # Resolve methods/types by name/token
-│       │   └── TextDecompilerOutput.cs
-│       ├── TheExtension.cs          # MEF entry point
-│       ├── DnSpyContext.cs          # Static service bridge
-│       └── MenuCommands.cs          # dnSpy menu items
-├── deps/                        # dnSpy contract DLLs (for standalone build)
-├── build/Extensions/           # Deployed extension DLLs
-├── skills/                     # AI agent workflow guides (install to .claude/skills/)
-│   └── deobfuscate-dotnet/     # .NET deobfuscation skill
-│       └── SKILL.md
-└── scripts/
-    └── build.ps1           # Build & deploy script
+│   ├── dnSpy.MCP.Core/        # Shared library: 36 tools, McpContext, decompiler bridge
+│   │   ├── Abstractions/      # IAssemblyLoader, ISourceDecompiler, IUIThreadScheduler,
+│   │   │                      # ILogSink, ITreeRefreshNotifier
+│   │   ├── Adapters/          # DnSpyDecompilerSourceProvider (shared by both hosts)
+│   │   ├── Mcp/               # McpContext, ToolRegistry, McpServerHost (HTTP), JsonRpc
+│   │   ├── Helpers/           # MethodResolver
+│   │   └── Tools/             # 13 instance tool classes ([Description] methods)
+│   ├── dnSpy.MCP/             # Extension (net10.0-windows, WPF, MEF) — HTTP transport
+│   │   ├── Adapters/          # dnSpy-backed adapter implementations
+│   │   ├── Tools/TreeViewTools.cs  # 2 UI-only tools (get_selected_node, refresh_u_i)
+│   │   └── TheExtension.cs    # MEF entry, composes McpContext
+│   ├── dnSpy.MCP.Headless/    # Standalone exe (stdio MCP transport via MCP SDK)
+│   │   ├── Program.cs         # Host + fail-fast startup + stdio server
+│   │   ├── CliOptions.cs      # --load (globs) / --config / --help
+│   │   └── Adapters/          # dnlib loader, reflection decompiler loader,
+│   │                          # stderr log sink, mutation-lock filter
+│   └── dnSpy.MCP.Tests/       # Unit + headless E2E tests (spawn real server process)
+│       └── TestData/SampleLibrary/  # E2E fixture assembly
+├── deps/                      # Vendored dnSpy DLLs (sync via scripts/sync-deps.ps1)
+├── scripts/                   # build.ps1, sync-deps.ps1, verify-tool-count.ps1, mcp-probe.js
+└── skills/                    # AI agent workflow guides
+```
+
+## Headless Mode
+
+For batch analysis without dnSpy running: same 36 tools, decompiler output
+byte-identical to dnSpy.exe, stdio transport (Claude Desktop / Cursor /
+VS Code can auto-spawn it).
+
+```powershell
+# Build & publish
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -PublishHeadless
+
+# Run directly from build output
+dotnet src/dnSpy.MCP.Headless/bin/Release/net10.0-windows/dnspy-mcp-headless.dll --load path\to\target.dll
+
+# Or from the published bundle
+dotnet publish\headless\dnspy-mcp-headless.dll --load "path\to\*.dll"
+```
+
+- `--load, -l <path>` — pre-load assemblies (repeatable, supports `*`/`?` globs)
+- `--config, -c <json>` — reserved, currently unused
+- Logging goes to **stderr only** (stdout carries the MCP JSON-RPC frames)
+- Parallel mutation calls (`rename_*`, `update_method_body`) are serialized via
+  a shared lock, mirroring the Extension transport
+
+Client config (stdio):
+
+```json
+{
+  "mcpServers": {
+    "dnspy-headless": {
+      "command": "dotnet",
+      "args": [
+        "D:\\path\\to\\publish\\headless\\dnspy-mcp-headless.dll",
+        "--load", "D:\\path\\to\\target.dll"
+      ]
+    }
+  }
+}
 ```
 
 ## Adding New Tools
 
 Tools are discovered at runtime via reflection. To add a new tool:
 
-1. Create a `public static` class in `src/dnSpy.MCP/Tools/` under the `dnSpy.MCP.Tools` namespace
-2. Add `public static` methods with a `[Description("...")]` attribute
+1. Create a `public sealed` class in `src/dnSpy.MCP.Core/Tools/` under the
+   `dnSpy.MCP.Core.Tools` namespace, with a constructor taking `McpContext`
+2. Add instance methods `public string MyTool(...)` with a `[Description("...")]` attribute
 3. Parameters use `[Description("...")]` for documentation
 
 ```csharp
 using System.ComponentModel;
+using dnSpy.MCP.Core.Mcp;
 
-namespace dnSpy.MCP.Tools {
-    public static class MyTools {
+namespace dnSpy.MCP.Core.Tools {
+    public sealed class MyTools(McpContext ctx) {
         [Description("Describe what this tool does")]
-        public static string MyTool(
+        public string MyTool(
             [Description("Parameter description")] string param1) {
-            // Access dnSpy services via DnSpyContext
-            var module = DnSpyContext.DocumentService?
-                .GetAssemblies().FirstOrDefault()?.ModuleDef;
-            return $"Result: {param1}";
+            // Access loaded modules via the abstraction — works in both
+            // Extension (dnSpy) and Headless (dnlib) hosts
+            var docs = ctx.AssemblyLoader.GetDocuments();
+            return $"Result: {param1} ({docs.Count} assemblies loaded)";
         }
     }
 }

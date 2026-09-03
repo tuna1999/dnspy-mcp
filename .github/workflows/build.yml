@@ -105,7 +105,12 @@ jobs:
             "dnSpy.Contracts.DnSpy.dll",
             "dnSpy.Contracts.Logic.dll",
             "ICSharpCode.Decompiler.dll",
-            "dnlib.dll"
+            "dnlib.dll",
+            # Headless-only:
+            "dnSpy.Decompiler.dll",
+            "dnSpy.Decompiler.ILSpy.Core.dll",
+            "ICSharpCode.NRefactory.dll",
+            "ICSharpCode.NRefactory.CSharp.dll"
           )
           $missing = @()
           foreach ($dll in $required) {
@@ -125,16 +130,17 @@ jobs:
             Get-ChildItem $binDir -Filter "*.dll" | Select-Object Name | Format-Table -AutoSize
             exit 1
           }
-
-          Write-Host "deps/ ready (${{ matrix.arch }}) with $((Get-ChildItem deps/*.dll).Count) DLLs."
-
       - name: Verify deps
         run: |
           $required = @(
             "dnSpy.Contracts.DnSpy.dll",
             "dnSpy.Contracts.Logic.dll",
             "ICSharpCode.Decompiler.dll",
-            "dnlib.dll"
+            "dnlib.dll",
+            "dnSpy.Decompiler.dll",
+            "dnSpy.Decompiler.ILSpy.Core.dll",
+            "ICSharpCode.NRefactory.dll",
+            "ICSharpCode.NRefactory.CSharp.dll"
           )
           $missing = @()
           foreach ($dll in $required) {
@@ -147,10 +153,17 @@ jobs:
             $missing | ForEach-Object { Write-Host "  - $_" }
             exit 1
           }
-          Write-Host "All required deps are present (${{ matrix.arch }})."
+          Write-Host "All required deps are present."
 
-      - name: Build
-        run: dotnet build src/dnSpy.MCP/dnSpy.MCP.csproj -c Release --nologo -v q
+      - name: Build solution
+        run: dotnet build dnspy_mcp.sln -c Release --nologo -v q
+
+      - name: Test (unit + headless E2E)
+        run: dotnet test src/dnSpy.MCP.Tests -c Release --nologo --no-build
+
+      - name: Tool-count drift guard
+        shell: pwsh
+        run: pwsh -NoProfile scripts/verify-tool-count.ps1
 
       - name: Check build output
         run: |
@@ -163,7 +176,10 @@ jobs:
             exit 1
           }
 
-      - name: Upload artifact
+      - name: Publish headless
+        run: dotnet publish src/dnSpy.MCP.Headless/dnSpy.MCP.Headless.csproj -c Release -o publish/headless --nologo -v q
+
+      - name: Upload artifact (extension)
         uses: actions/upload-artifact@v4
         with:
           name: dnSpy-MCP-win-${{ matrix.arch }}
@@ -171,4 +187,11 @@ jobs:
             src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll
             src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.deps.json
             src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.pdb
+          retention-days: 7
+
+      - name: Upload artifact (headless)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dnSpy-MCP-headless-win-${{ matrix.arch }}
+          path: publish/headless/
           retention-days: 7
