@@ -14,6 +14,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Search for types by name pattern. Use 'regex:' prefix for regex.")]
         public string SearchTypes(string pattern, string? namespaceFilter = null, string? assembly = null) {
+            if (string.IsNullOrWhiteSpace(pattern))
+                return "Error: pattern is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
@@ -35,6 +38,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Search for methods by name pattern. Use 'regex:' prefix for regex.")]
         public string SearchMethods(string pattern, string? typeFullName = null, string? assembly = null) {
+            if (string.IsNullOrWhiteSpace(pattern))
+                return "Error: pattern is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
@@ -73,6 +79,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Grep across types, methods, and strings.")]
         public string Grep(string pattern, string scope = "all", string? assembly = null) {
+            if (string.IsNullOrWhiteSpace(pattern))
+                return "Error: pattern is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 

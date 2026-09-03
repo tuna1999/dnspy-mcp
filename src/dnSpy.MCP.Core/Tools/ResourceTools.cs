@@ -38,6 +38,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Get raw data of a specific embedded resource by name. maxLength caps how many bytes are dumped (default 512).")]
         public string GetResourceData(string resourceName, int maxLength = 512) {
+            if (string.IsNullOrWhiteSpace(resourceName))
+                return "Error: resourceName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 

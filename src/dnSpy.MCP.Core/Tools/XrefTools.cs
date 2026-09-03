@@ -14,6 +14,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Find all methods that reference the given method or field. Format: 'Namespace.Class::Member' (scoped to that type) or plain 'Member' (matches any type).")]
         public string GetXrefsTo(string memberFullName, string? assembly = null) {
+            if (string.IsNullOrWhiteSpace(memberFullName))
+                return "Error: memberFullName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
@@ -65,6 +68,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Get all methods/fields called by a method.")]
         public string GetCallees(string methodFullName) {
+            if (string.IsNullOrWhiteSpace(methodFullName))
+                return "Error: methodFullName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 

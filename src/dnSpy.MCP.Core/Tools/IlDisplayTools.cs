@@ -9,6 +9,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Returns formatted IL opcodes for a method with line numbers. Input accepts full name, token, or partial method name.")]
         public string GetIlOpcodesFormatted(string methodFullNameOrToken) {
+            if (string.IsNullOrWhiteSpace(methodFullNameOrToken))
+                return "Error: methodFullNameOrToken is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 

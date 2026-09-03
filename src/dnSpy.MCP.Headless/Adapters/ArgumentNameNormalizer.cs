@@ -33,6 +33,9 @@ public static class ArgumentNameNormalizer {
         public required HashSet<string> Names { get; init; }
         /// <summary>Parameters without a default value (i.e. schema-required).</summary>
         public required List<string> Required { get; init; }
+        /// <summary>Required string parameters — missing ones get null-injected
+        /// so SDK marshalling succeeds and the tool's own guard reports the error.</summary>
+        public required List<string> RequiredStrings { get; init; }
     }
 
     /// <summary>Registers the declared parameters for a tool.</summary>
@@ -48,16 +51,26 @@ public static class ArgumentNameNormalizer {
             Aliases = map,
             Names = plist.Select(p => p.Name!).ToHashSet(StringComparer.Ordinal),
             Required = plist.Where(p => !p.HasDefaultValue).Select(p => p.Name!).ToList(),
+            RequiredStrings = plist
+                .Where(p => !p.HasDefaultValue && p.ParameterType == typeof(string))
+                .Select(p => p.Name!).ToList(),
         };
     }
 
     /// <summary>
+    /// Aliases for a tool (snake_case → declared name), or null when the tool
+    /// has none. Used to rewrite the published input schema so client-side
+    /// validators accept the alias spellings too.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string>? GetAliases(string toolName)
+        => _tools.TryGetValue(toolName, out var tp) && tp.Aliases.Count > 0 ? tp.Aliases : null;
+
+    /// <summary>
     /// Rewrites argument keys for the given tool to their declared parameter
     /// names. Returns the (possibly new) dictionary; null when nothing changed.
-    /// </summary>
     public static IDictionary<string, JsonElement>? Normalize(
         string toolName, IDictionary<string, JsonElement>? arguments) {
-        if (arguments is null || arguments.Count == 0 || !_tools.TryGetValue(toolName, out var tp))
+        if (arguments is null || !_tools.TryGetValue(toolName, out var tp))
             return null;
 
         Dictionary<string, JsonElement>? rewritten = null;
@@ -88,6 +101,20 @@ public static class ArgumentNameNormalizer {
                 rewritten ??= new Dictionary<string, JsonElement>(effective, StringComparer.Ordinal);
                 rewritten.Remove(unknownKeys[0]);
                 rewritten.TryAdd(missingRequired[0], value);
+            }
+        }
+
+        // Pass 3: null-inject any required string parameter still absent. The
+        // SDK's parameter marshaller throws before the method body runs when a
+        // required parameter is missing; injecting null lets the call reach the
+        // tool, whose guard returns an actionable "Error: X is required.".
+        var nullEl = (JsonElement?)null;
+        foreach (var missing in tp.RequiredStrings) {
+            if (effective.ContainsKey(missing)) continue;
+            rewritten ??= new Dictionary<string, JsonElement>(effective, StringComparer.Ordinal);
+            if (!rewritten.ContainsKey(missing)) {
+                nullEl ??= System.Text.Json.JsonSerializer.Deserialize<JsonElement>("null");
+                rewritten[missing] = nullEl.Value;
             }
         }
 

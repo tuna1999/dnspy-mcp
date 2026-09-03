@@ -13,6 +13,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Get raw IL instructions of a method body. Useful for low-level analysis.")]
         public string GetMethodIl(string methodFullName) {
+            if (string.IsNullOrWhiteSpace(methodFullName))
+                return "Error: methodFullName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
@@ -41,6 +44,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Get detailed method signature: parameters, return type, attributes, and flags.")]
         public string GetMethodSignatures(string methodFullName) {
+            if (string.IsNullOrWhiteSpace(methodFullName))
+                return "Error: methodFullName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
@@ -74,6 +80,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Get type hierarchy: base types, implemented interfaces, and inheritance chain.")]
         public string GetTypeHierarchy(string typeFullName) {
+            if (string.IsNullOrWhiteSpace(typeFullName))
+                return "Error: typeFullName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
@@ -109,6 +118,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Get raw IL bytes of a method body for pattern matching.")]
         public string GetMethodBody(string methodFullName) {
+            if (string.IsNullOrWhiteSpace(methodFullName))
+                return "Error: methodFullName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 

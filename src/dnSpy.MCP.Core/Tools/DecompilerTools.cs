@@ -10,6 +10,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Decompile a specific method to C# code. Format: 'Namespace.Class::Method' or just 'Method'")]
         public string DecompileMethod(string methodFullNameOrToken) {
+            if (string.IsNullOrWhiteSpace(methodFullNameOrToken))
+                return "Error: methodFullNameOrToken is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
@@ -28,6 +31,9 @@ namespace dnSpy.MCP.Core.Tools {
 
         [Description("Decompile an entire type (all members) to C# code.")]
         public string DecompileType(string typeFullName) {
+            if (string.IsNullOrWhiteSpace(typeFullName))
+                return "Error: typeFullName is required.";
+
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 

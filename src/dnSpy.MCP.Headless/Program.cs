@@ -87,6 +87,37 @@ filters.Request.CallToolFilters.Add((next) => (request, ct) => {
 filters.Request.CallToolFilters.Add(MutationLockFilter.Build(mutationLock));
 builder.Services.Configure<ModelContextProtocol.Server.McpServerOptions>(o => o.Filters = filters);
 
+// Rewrite the published input schemas so CLIENT-SIDE validators (which check
+// arguments against the tools/list schema before the call is ever sent) accept
+// alias spellings:
+//   - each snake_case alias is published as an optional property mirroring the
+//     declared one
+//   - the "required" array is dropped — presence is enforced server-side by the
+//     tools themselves, which return actionable messages for missing args.
+// Without this, a client validating {member_full_name: ...} against
+// required: ["memberFullName"] rejects the call before it reaches the
+// server-side ArgumentNameNormalizer.
+filters.Request.ListToolsFilters.Add(next => async (request, ct) => {
+    var result = await next(request, ct);
+    if (result?.Tools is null) return result!;
+    foreach (var tool in result.Tools) {
+        var aliases = ArgumentNameNormalizer.GetAliases(tool.Name);
+        if (tool.InputSchema.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+        if (System.Text.Json.Nodes.JsonNode.Parse(tool.InputSchema.GetRawText())
+            is not System.Text.Json.Nodes.JsonObject node) continue;
+        if (node["properties"] is not System.Text.Json.Nodes.JsonObject props) continue;
+        if (aliases is not null) {
+            foreach (var (alias, canonical) in aliases) {
+                if (props[canonical]?.DeepClone() is System.Text.Json.Nodes.JsonNode cloned)
+                    props[alias] = cloned;
+            }
+        }
+        node.Remove("required");
+        tool.InputSchema = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(node);
+    }
+    return result;
+});
+
 AutoToolRegistration.RegisterCoreTools(mcpBuilder, ctx);
 
 try {
