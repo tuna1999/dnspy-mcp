@@ -397,37 +397,31 @@ namespace dnSpy.MCP.Core.Mcp
                 using var timeoutCts = new CancellationTokenSource(timeout);
                 ToolCallScope.Set(timeoutCts.Token);
 
-                // Destructive tools (patch/rename) must run under the mutation lock so concurrent
-                // batch requests can't race on dnlib metadata. Read-only tools stay fully parallel.
-                SemaphoreSlim? heldLock = null;
+                // Release via a continuation attached to the invoke task itself, NOT an outer
+                // finally: WaitAsync(timeout) abandons the await, not the task. A timed-out
+                // mutation keeps running and must keep holding the lock until it actually
+                // finishes — releasing early would let the next mutation overlap it and race
+                // on shared dnlib metadata. ContinueWith observes t.Exception so a mutation that
+                // later faults doesn't raise UnobservedTaskException on the abandoned task.
+                var invokeTask = Task.Run(() => tool.Invoke(arguments));
                 if (tool.IsMutation)
-                {
-                    await _mutationLock.WaitAsync(timeout);
-                    heldLock = _mutationLock; // assigned only after successful acquire
-                }
-                try
-                {
-                    var result = await Task.Run(() => tool.Invoke(arguments)).WaitAsync(timeout);
+                    _ = invokeTask.ContinueWith(t => { _ = t.Exception; _mutationLock.Release(); });
 
-                    var content = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["type"] = "text",
-                            ["text"] = result
-                        }
-                    };
+                var result = await invokeTask.WaitAsync(timeout);
 
-                    return JsonRpc.CreateResponse(request["id"], new JsonObject
-                    {
-                        ["content"] = content
-                    });
-                }
-                finally
+                var content = new JsonArray
                 {
-                    ToolCallScope.Set(CancellationToken.None);
-                    heldLock?.Release();
-                }
+                    new JsonObject
+                    {
+                        ["type"] = "text",
+                        ["text"] = result
+                    }
+                };
+
+                return JsonRpc.CreateResponse(request["id"], new JsonObject
+                {
+                    ["content"] = content
+                });
             }
             catch (TimeoutException)
             {
@@ -438,6 +432,10 @@ namespace dnSpy.MCP.Core.Mcp
             {
                 McpLogger.Error(ex, $"Tool '{toolName}'");
                 return JsonRpc.MakeError(request["id"], -32603, $"Tool execution failed: {ex.Message}");
+            }
+            finally
+            {
+                ToolCallScope.Set(CancellationToken.None);
             }
         }
 
