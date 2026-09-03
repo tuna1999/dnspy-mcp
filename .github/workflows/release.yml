@@ -134,7 +134,8 @@ jobs:
             "dnSpy.Contracts.DnSpy.dll", "dnSpy.Contracts.Logic.dll",
             "ICSharpCode.Decompiler.dll", "dnlib.dll",
             "dnSpy.Decompiler.dll", "dnSpy.Decompiler.ILSpy.Core.dll",
-            "ICSharpCode.NRefactory.dll", "ICSharpCode.NRefactory.CSharp.dll"
+            "ICSharpCode.NRefactory.dll", "ICSharpCode.NRefactory.CSharp.dll",
+            "ICSharpCode.NRefactory.VB.dll"
           ) | ForEach-Object {
             Copy-Item (Join-Path $binDir $_) "deps/" -Force
           }

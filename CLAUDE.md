@@ -22,6 +22,7 @@ pwsh scripts/sync-deps.ps1 -DnSpyBin "C:\path\to\dnSpy\bin"  # override path
 #   dnSpy.Decompiler.ILSpy.Core.dll
 #   ICSharpCode.NRefactory.dll
 #   ICSharpCode.NRefactory.CSharp.dll
+#   ICSharpCode.NRefactory.VB.dll
 ```
 
 ### Local Development

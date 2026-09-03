@@ -110,7 +110,8 @@ jobs:
             "dnSpy.Decompiler.dll",
             "dnSpy.Decompiler.ILSpy.Core.dll",
             "ICSharpCode.NRefactory.dll",
-            "ICSharpCode.NRefactory.CSharp.dll"
+            "ICSharpCode.NRefactory.CSharp.dll",
+            "ICSharpCode.NRefactory.VB.dll"
           )
           $missing = @()
           foreach ($dll in $required) {
@@ -140,7 +141,8 @@ jobs:
             "dnSpy.Decompiler.dll",
             "dnSpy.Decompiler.ILSpy.Core.dll",
             "ICSharpCode.NRefactory.dll",
-            "ICSharpCode.NRefactory.CSharp.dll"
+            "ICSharpCode.NRefactory.CSharp.dll",
+            "ICSharpCode.NRefactory.VB.dll"
           )
           $missing = @()
           foreach ($dll in $required) {

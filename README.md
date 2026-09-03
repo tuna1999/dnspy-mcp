@@ -114,7 +114,8 @@ at analysis time (only the vendored decompiler DLLs in `deps/`).
   - `dnSpy.Contracts.DnSpy.dll`, `dnSpy.Contracts.Logic.dll`
   - `ICSharpCode.Decompiler.dll`, `dnlib.dll`
   - Headless-only: `dnSpy.Decompiler.dll`, `dnSpy.Decompiler.ILSpy.Core.dll`,
-    `ICSharpCode.NRefactory.dll`, `ICSharpCode.NRefactory.CSharp.dll`
+    `ICSharpCode.NRefactory.dll`, `ICSharpCode.NRefactory.CSharp.dll`,
+    `ICSharpCode.NRefactory.VB.dll`
 
 ### Configure DnSpyBin path
 

@@ -45,7 +45,8 @@ $requiredDlls = @(
     'dnSpy.Decompiler.dll',
     'dnSpy.Decompiler.ILSpy.Core.dll',
     'ICSharpCode.NRefactory.dll',
-    'ICSharpCode.NRefactory.CSharp.dll'
+    'ICSharpCode.NRefactory.CSharp.dll',
+    'ICSharpCode.NRefactory.VB.dll'
 )
 
 $copied = 0
