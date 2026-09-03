@@ -55,18 +55,6 @@ namespace dnSpy.MCP.Settings {
 		}
 		string allowedOrigins = string.Empty;
 
-		public int LogLevel {
-			get => logLevel;
-			set { if (logLevel != value) { logLevel = value; OnPropertyChanged(nameof(LogLevel)); } }
-		}
-		int logLevel = 1;
-
-		public int MaxRecentLogs {
-			get => maxRecentLogs;
-			set { if (maxRecentLogs != value) { maxRecentLogs = value; OnPropertyChanged(nameof(MaxRecentLogs)); } }
-		}
-		int maxRecentLogs = 200;
-
 		public int MaxConcurrency {
 			get => maxConcurrency;
 			set { if (maxConcurrency != value) { maxConcurrency = value; OnPropertyChanged(nameof(MaxConcurrency)); } }
@@ -97,8 +85,6 @@ namespace dnSpy.MCP.Settings {
 			other.RequireAuth = RequireAuth;
 			other.ApiToken = ApiToken;
 			other.AllowedOrigins = AllowedOrigins;
-			other.LogLevel = LogLevel;
-			other.MaxRecentLogs = MaxRecentLogs;
 			other.MaxConcurrency = MaxConcurrency;
 			other.MaxRequestSizeMB = MaxRequestSizeMB;
 			other.ToolTimeoutSeconds = ToolTimeoutSeconds;

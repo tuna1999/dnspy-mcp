@@ -32,8 +32,6 @@ namespace dnSpy.MCP.Settings {
 			RequireAuth = sect.Attribute<bool?>(nameof(RequireAuth)) ?? RequireAuth;
 			ApiToken = sect.Attribute<string>(nameof(ApiToken)) ?? ApiToken;
 			AllowedOrigins = sect.Attribute<string>(nameof(AllowedOrigins)) ?? AllowedOrigins;
-			LogLevel = sect.Attribute<int?>(nameof(LogLevel)) ?? LogLevel;
-			MaxRecentLogs = sect.Attribute<int?>(nameof(MaxRecentLogs)) ?? MaxRecentLogs;
 			MaxConcurrency = sect.Attribute<int?>(nameof(MaxConcurrency)) ?? MaxConcurrency;
 			MaxRequestSizeMB = sect.Attribute<int?>(nameof(MaxRequestSizeMB)) ?? MaxRequestSizeMB;
 			ToolTimeoutSeconds = sect.Attribute<int?>(nameof(ToolTimeoutSeconds)) ?? ToolTimeoutSeconds;
@@ -54,8 +52,6 @@ namespace dnSpy.MCP.Settings {
 			sect.Attribute(nameof(RequireAuth), RequireAuth);
 			sect.Attribute(nameof(ApiToken), ApiToken);
 			sect.Attribute(nameof(AllowedOrigins), AllowedOrigins);
-			sect.Attribute(nameof(LogLevel), LogLevel);
-			sect.Attribute(nameof(MaxRecentLogs), MaxRecentLogs);
 			sect.Attribute(nameof(MaxConcurrency), MaxConcurrency);
 			sect.Attribute(nameof(MaxRequestSizeMB), MaxRequestSizeMB);
 			sect.Attribute(nameof(ToolTimeoutSeconds), ToolTimeoutSeconds);
