@@ -66,6 +66,18 @@ public class ToolRegistryAndCancellationTests {
         Assert.True(names.Count >= 36, $"expected >=36 Core tools, got {names.Count}: {string.Join(",", names)}");
     }
 
+    [Theory]
+    [InlineData("Already_snake", "already_snake")]
+    [InlineData("Simple", "simple")]
+    [InlineData("MultiWord", "multi_word")]
+    [InlineData("ABC", "abc")]                              // leading-uppercase acronym: not all-uppercase boundary
+    [InlineData("RefreshUI", "refresh_ui")]                  // trailing acronym clamps to one word
+    [InlineData("GetHTTPResponse", "get_http_response")]     // acronym followed by lowercase word
+    [InlineData("GetIlOpcodesFormatted", "get_il_opcodes_formatted")]
+    public void ToSnakeCase_breaks_words_at_boundaries_not_every_uppercase(string input, string expected) {
+        Assert.Equal(expected, ToolRegistry.ToSnakeCase(input));
+    }
+
     [Fact]
     public void ToolCallScope_token_flows_into_TaskRun() {
         using var cts = new CancellationTokenSource();

@@ -108,7 +108,7 @@ dnspy_mcp/
 │   │   │   ├── McpSettingsControl.xaml  # Settings UI
 │   │   │   └── McpSettingsControl.xaml.cs
 │   │   └── Tools/
-│   │       └── TreeViewTools.cs  # Extension-only (2 tools: get_selected_node, refresh_u_i)
+│   │       └── TreeViewTools.cs  # Extension-only (2 tools: get_selected_node, refresh_ui)
 │   │
 │   └── dnSpy.MCP.Headless/      # Standalone exe (no WPF, net10.0) — refs Core + MCP SDK
 │       ├── Program.cs            # Host + DI + CLI parse + stdio MCP transport
@@ -163,7 +163,7 @@ Server starts on **manual click** (not at launch) so Output Pane creation runs o
 Tools are `public` methods on classes in namespace `dnSpy.MCP.Tools*` with `[Description("...")]` attribute. `ToolRegistry.DiscoverTools()` accepts BOTH:
 
 - **Instance classes** with `ctor(McpContext)` — Core's 13 tool classes
-- **Static classes** — Extension-only `TreeViewTools` (provides `get_selected_node`, `refresh_u_i`)
+- **Static classes** — Extension-only `TreeViewTools` (provides `get_selected_node`, `refresh_ui`)
 
 Tool names auto-convert to `snake_case` via `ToolRegistry.ToSnakeCase`.
 
@@ -355,7 +355,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 | Tool | Description |
 |------|-------------|
 | `get_selected_node` | Currently selected node in TreeView |
-| `refresh_u_i` | Refresh TreeView after metadata changes |
+| `refresh_ui` | Refresh TreeView after metadata changes |
 | `rename_namespace` | Rename namespace across matching types (dry-run by default) |
 | `rename_class` | Rename one class (dry-run by default) |
 | `rename_method` | Rename methods by exact/partial match (dry-run by default) |
