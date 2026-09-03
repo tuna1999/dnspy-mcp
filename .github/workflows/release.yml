@@ -183,11 +183,6 @@ jobs:
           name: release-headless
           path: dnspy-mcp-headless.zip
           retention-days: 1
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.arch }}
-          path: dnSpy.MCP.x-${{ matrix.arch }}.zip
-          retention-days: 1
 
   # ── Create GitHub Release with both zips ─────────────────────────
   release:
