@@ -35,8 +35,7 @@ public static class AutoToolRegistration {
                 if (desc is null) continue;
 
                 var toolName = ToolRegistry.ToSnakeCase(method.Name);
-                ArgumentNameNormalizer.Register(toolName,
-                    method.GetParameters().Select(p => p.Name!));
+                ArgumentNameNormalizer.Register(toolName, method.GetParameters());
                 var mcpTool = McpServerTool.Create(method, instance,
                     new McpServerToolCreateOptions {
                         Name = toolName,

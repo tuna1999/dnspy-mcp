@@ -192,4 +192,25 @@ public class HeadlessE2ETests {
             .Select(c => c!["text"]?.GetValue<string>() ?? ""));
         text.Should().Contain("TestMethod", "the type must actually decompile");
     }
+
+    [Fact]
+    public async Task Single_unknown_string_arg_maps_to_missing_required_param() {
+        // Agents invent synonyms ("query" for the declared "pattern", "typeName"
+        // for "typeFullName"). When the required param is missing and exactly one
+        // unknown string key was sent, the normalizer maps it over instead of
+        // failing validation.
+        using var hp = new HeadlessProcess("--load",
+            Path.Combine(AppContext.BaseDirectory, "SampleLibrary.dll"));
+        await InitializeAsync(hp);
+        await hp.NotifyAsync("notifications/initialized");
+
+        var resp = await hp.RequestAsync(2, "tools/call",
+            "{\"name\":\"grep\",\"arguments\":{\"query\":\"TestMethod\"}}");
+
+        resp["error"].Should().BeNull("synonym key must be mapped to the required param");
+        resp["result"]!["isError"]?.GetValue<bool>().Should().NotBe(true);
+        var text = string.Join("\n", resp["result"]!["content"]!.AsArray()
+            .Select(c => c!["text"]?.GetValue<string>() ?? ""));
+        text.Should().Contain("TestMethod", "grep must match the TestMethod member");
+    }
 }
