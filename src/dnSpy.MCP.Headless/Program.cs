@@ -75,6 +75,15 @@ var mcpBuilder = builder.Services.AddMcpServer().WithStdioServerTransport();
 // prefix list is the single source of truth.
 var mutationLock = MutationLockFilter.CreateLock();
 var filters = new ModelContextProtocol.Server.McpServerFilters();
+// Argument normalization runs before the mutation gate so rewritten keys reach
+// the tool regardless of pipeline order.
+filters.Request.CallToolFilters.Add((next) => (request, ct) => {
+    var normalized = ArgumentNameNormalizer.Normalize(
+        request.Params?.Name ?? "", request.Params?.Arguments);
+    if (normalized is not null)
+        request.Params!.Arguments = normalized;
+    return next(request, ct);
+});
 filters.Request.CallToolFilters.Add(MutationLockFilter.Build(mutationLock));
 builder.Services.Configure<ModelContextProtocol.Server.McpServerOptions>(o => o.Filters = filters);
 

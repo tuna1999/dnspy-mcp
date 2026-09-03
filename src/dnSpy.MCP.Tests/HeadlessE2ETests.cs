@@ -171,4 +171,25 @@ public class HeadlessE2ETests {
             .Select(c => c!["text"]?.GetValue<string>() ?? ""));
         text.Should().Contain("42", "TestMethod returns the constant 42");
     }
+
+    [Fact]
+    public async Task Snake_case_argument_keys_are_normalized_to_camelCase() {
+        // MCP tool names are snake_case, so agents often send parameters in
+        // snake_case too (member_full_name instead of memberFullName). The
+        // argument-normalization filter must accept both spellings.
+        using var hp = new HeadlessProcess("--load",
+            Path.Combine(AppContext.BaseDirectory, "SampleLibrary.dll"));
+        await InitializeAsync(hp);
+        await hp.NotifyAsync("notifications/initialized");
+
+        var resp = await hp.RequestAsync(2, "tools/call",
+            "{\"name\":\"decompile_type\"," +
+            "\"arguments\":{\"type_full_name\":\"TestNS.TestClass\"}}");
+
+        resp["error"].Should().BeNull("snake_case key must pass schema validation");
+        resp["result"]!["isError"]?.GetValue<bool>().Should().NotBe(true);
+        var text = string.Join("\n", resp["result"]!["content"]!.AsArray()
+            .Select(c => c!["text"]?.GetValue<string>() ?? ""));
+        text.Should().Contain("TestMethod", "the type must actually decompile");
+    }
 }
