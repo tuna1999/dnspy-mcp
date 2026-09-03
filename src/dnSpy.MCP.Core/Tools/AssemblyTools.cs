@@ -120,52 +120,61 @@ namespace dnSpy.MCP.Core.Tools {
             return $"Assembly '{assemblyName}' not found. Use list_loaded_assemblies to see available assemblies.";
         }
 
-        [Description("List all namespaces in the currently loaded assembly.")]
-        public string AssemblyListNamespaces() {
+        [Description("List namespaces, optionally scoped to one assembly by name (e.g. 'Hinet.Web'). Without assemblyName, aggregates across ALL loaded assemblies.")]
+        public string AssemblyListNamespaces(
+            [Description("Optional assembly name to scope to (e.g. 'Hinet.Web')")] string? assemblyName = null) {
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
+            var modules = ScopeModules(assemblyName);
+            if (modules.Count == 0)
+                return $"Assembly '{assemblyName}' not found. Use list_loaded_assemblies to see available assemblies.";
+
             var namespaces = new SortedSet<string>();
-            foreach (var loaded in _ctx.AssemblyLoader.GetDocuments()) {
-                if (loaded.Module is ModuleDef mod) {
-                    foreach (var type in mod.GetTypes()) {
-                        if (!string.IsNullOrEmpty(type.Namespace))
-                            namespaces.Add(type.Namespace);
-                    }
+            foreach (var mod in modules) {
+                foreach (var type in mod.GetTypes()) {
+                    if (!string.IsNullOrEmpty(type.Namespace))
+                        namespaces.Add(type.Namespace);
                 }
             }
 
-            return namespaces.Count == 0
-                ? "No namespaces found."
-                : $"Namespaces ({namespaces.Count}):\n" + string.Join("\n", namespaces);
+            if (namespaces.Count == 0)
+                return "No namespaces found.";
+
+            var scope = string.IsNullOrEmpty(assemblyName) ? "all loaded assemblies" : $"'{assemblyName}'";
+            return $"Namespaces in {scope} ({namespaces.Count}):\n" + string.Join("\n", namespaces);
         }
 
-        [Description("List types in the currently loaded assembly, optionally filtered by a regex pattern.")]
-        public string AssemblyListTypes(string? pattern = null) {
+        [Description("List types, optionally filtered by regex pattern and scoped to one assembly by name. Without assemblyName, lists types across ALL loaded assemblies.")]
+        public string AssemblyListTypes(
+            [Description("Optional regex pattern to filter type full names")] string? pattern = null,
+            [Description("Optional assembly name to scope to (e.g. 'Hinet.Web')")] string? assemblyName = null) {
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
-            var types = new List<string>();
-            foreach (var loaded in _ctx.AssemblyLoader.GetDocuments()) {
-                if (loaded.Module is ModuleDef mod) {
-                    foreach (var type in mod.GetTypes()) {
-                        var fullName = type.FullName?.ToString();
-                        if (string.IsNullOrEmpty(fullName)) continue;
-                        if (pattern == null) {
-                            types.Add(fullName);
-                            continue;
-                        }
+            var modules = ScopeModules(assemblyName);
+            if (modules.Count == 0)
+                return $"Assembly '{assemblyName}' not found. Use list_loaded_assemblies to see available assemblies.";
 
-                        try {
-                            if (System.Text.RegularExpressions.Regex.IsMatch(fullName, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2))) {
-                                types.Add(fullName);
-                            }
+            var types = new List<string>();
+            foreach (var mod in modules) {
+                foreach (var type in mod.GetTypes()) {
+                    var fullName = type.FullName?.ToString();
+                    if (string.IsNullOrEmpty(fullName)) continue;
+                    if (pattern == null) {
+                        types.Add(fullName);
+                        continue;
+                    }
+
+                    try {
+                        if (System.Text.RegularExpressions.Regex.IsMatch(fullName, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2))) {
+                            types.Add(fullName);
                         }
-                        catch (System.Text.RegularExpressions.RegexMatchTimeoutException ex) {
-                            // Regex too expensive on this type name; treat as no-match
-                            // but trace it so pathological patterns are diagnosable.
-                            _ctx.Log.Warn($"Regex timeout matching '{fullName}' against pattern '{pattern}': {ex.Message}");
-                        }
+                    }
+                    catch (System.Text.RegularExpressions.RegexMatchTimeoutException ex) {
+                        // Regex too expensive on this type name; treat as no-match
+                        // but trace it so pathological patterns are diagnosable.
+                        _ctx.Log.Warn($"Regex timeout matching '{fullName}' against pattern '{pattern}': {ex.Message}");
                     }
                 }
             }
@@ -178,23 +187,41 @@ namespace dnSpy.MCP.Core.Tools {
             return $"Types ({types.Count}):\n" + string.Join("\n", types.OrderBy(t => t));
         }
 
-        [Description("Get assembly references (DLLs, NuGet packages) of the currently loaded assembly.")]
-        public string AssemblyGetReferences() {
+        [Description("Get assembly references (DLLs, NuGet packages), optionally scoped to one assembly by name. Without assemblyName, lists references of ALL loaded assemblies.")]
+        public string AssemblyGetReferences(
+            [Description("Optional assembly name to scope to (e.g. 'Hinet.Web')")] string? assemblyName = null) {
             if (_ctx.AssemblyLoader.GetDocuments().Count == 0)
                 return "Error: No assemblies loaded.";
 
+            var modules = ScopeModules(assemblyName);
+            if (modules.Count == 0)
+                return $"Assembly '{assemblyName}' not found. Use list_loaded_assemblies to see available assemblies.";
+
             var sb = new StringBuilder();
-            foreach (var loaded in _ctx.AssemblyLoader.GetDocuments()) {
-                if (loaded.Module is ModuleDef mod) {
-                    sb.AppendLine($"Module: {mod.Name}");
-                    sb.AppendLine($"Assembly: {mod.Assembly?.FullName ?? "N/A"}");
-                    sb.AppendLine();
-                    sb.AppendLine("References:");
-                    foreach (var asmRef in mod.GetAssemblyRefs())
-                        sb.AppendLine($"  - {asmRef.FullName}");
-                }
+            foreach (var mod in modules) {
+                sb.AppendLine($"Module: {mod.Name}");
+                sb.AppendLine($"Assembly: {mod.Assembly?.FullName ?? "N/A"}");
+                sb.AppendLine();
+                sb.AppendLine("References:");
+                foreach (var asmRef in mod.GetAssemblyRefs())
+                    sb.AppendLine($"  - {asmRef.FullName}");
             }
             return sb.Length == 0 ? "No assembly loaded." : sb.ToString();
+        }
+
+        /// <summary>
+        /// Resolves modules for an optional assembly scope. Null/empty scope
+        /// returns every loaded module; otherwise resolves via the MethodResolver
+        /// (case-insensitive simple-name match). Empty result = unknown assembly.
+        /// </summary>
+        private List<ModuleDef> ScopeModules(string? assemblyName) {
+            if (string.IsNullOrEmpty(assemblyName))
+                return _ctx.AssemblyLoader.GetDocuments()
+                    .Where(d => d.Module is ModuleDef)
+                    .Select(d => d.Module)
+                    .Cast<ModuleDef>()
+                    .ToList();
+            return _ctx.Resolver.GetModules(assemblyName).ToList();
         }
 
         private static string FormatModuleOverview(ModuleDef mod) {

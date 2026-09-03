@@ -90,13 +90,11 @@ at analysis time (only the vendored decompiler DLLs in `deps/`).
 ### Assembly
 | Tool | Description |
 |------|-------------|
-| `load_assembly` | Load a .NET DLL/EXE by absolute path (headless/extension) |
-| `close_assembly` | Unload assemblies by simple name (case-insensitive) |
 | `list_loaded_assemblies` | All loaded binaries: filename, assembly name, MVID, type count, path |
-| `assembly_overview` | Module info, version, entry point, type count, references |
-| `assembly_list_namespaces` | All namespaces in the loaded assembly |
-| `assembly_list_types` | Type listing with optional regex filter |
-| `assembly_get_references` | Assembly references (DLLs, NuGet packages) |
+| `assembly_overview` | Module info, version, entry point, type count, references (optional assemblyName scope) |
+| `assembly_list_namespaces` | Namespaces, optionally scoped to one assembly (default: all loaded) |
+| `assembly_list_types` | Type listing with optional regex filter + assembly scope |
+| `assembly_get_references` | Assembly references (DLLs, NuGet packages), optional assembly scope |
 
 *`get_selected_node` and `refresh_u_i` (UI & Navigation below) exist only in the dnSpy extension — headless serves the other 36.*
 
