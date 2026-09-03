@@ -5,7 +5,7 @@ description: Deobfuscate .NET binaries loaded in dnSpy via MCP tools. Use this s
 
 ## Deobfuscate .NET Binary
 
-You have 36 MCP tools for interacting with dnSpy. Your job is to make obfuscated .NET code readable and, when requested, patch it in-place. You decide which tools to use and in what order based on what you discover — there is no fixed pipeline.
+You have 38 MCP tools for interacting with dnSpy. Your job is to make obfuscated .NET code readable and, when requested, patch it in-place. You decide which tools to use and in what order based on what you discover — there is no fixed pipeline.
 
 ### Mental Model
 
@@ -134,14 +134,14 @@ The goal: disable checks that prevent analysis.
 | Find types by name | `search_types` | `get_type_members` |
 | Find methods | `search_methods` | `get_method_signatures` |
 | Find constants/keys | `search_constants` | `get_fields` |
-| Rename | `rename_method` / `rename_class` / `rename_namespace` | `refresh_u_i` |
+| Rename | `rename_method` / `rename_class` / `rename_namespace` | `refresh_ui` |
 | Patch IL | `update_method_body` (dry_run first) | `decompile_method` to verify |
-| After changes | `refresh_u_i` | verify in dnSpy UI |
+| After changes | `refresh_ui` | verify in dnSpy UI |
 
 ### Workflow Tips
 
 - Start with `list_loaded_assemblies` to know what's in scope. If multiple assemblies are loaded, scope searches with the `assembly` parameter.
 - When you encounter a method with many `<>` compiler-generated names (`<>c__DisplayClass`, `<>g__`), these are usually lambda/local function artifacts, not obfuscation — treat them differently.
 - Some obfuscators inject dummy types or methods. Use `get_type_hierarchy` to spot types with no base (other than `Object`) and no interfaces — these are often junk.
-- `search_strings` with `regex:` prefix is powerful for finding patterns like encoded data, URLs, file paths.
-- After any rename or patch, call `refresh_u_i` so dnSpy's tree view updates.
+- `search_types` and `search_methods` accept a `regex:` prefix (`regex:^[^a-zA-Z]+$`) — powerful for gibberish-name patterns. `search_strings` matches substrings only; combine it with `grep` scope `strings` for broader literal sweeps.
+- After any rename or patch, call `refresh_ui` so dnSpy's tree view updates.

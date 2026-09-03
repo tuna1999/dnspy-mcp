@@ -37,11 +37,19 @@ Get-ChildItem -Path $toolsDir -Filter *.cs | ForEach-Object {
         if ($j -lt $lines.Count -and $lines[$j] -match 'public static string (\w+)\s*\(') {
             $method = $Matches[1]
             # snake_case conversion mirroring ToolRegistry.ToSnakeCase exactly:
-            # insert '_' before every uppercase letter at index > 0.
+            # '_' before an uppercase at a word boundary — after lower/digit, or when the
+            # last uppercase of an acronym is followed by a lowercase. Trailing acronyms
+            # stay clamped: "RefreshUI" -> "refresh_ui", not "refresh_u_i".
             $sb = New-Object System.Text.StringBuilder($method.Length + 10)
             for ($k = 0; $k -lt $method.Length; $k++) {
                 $ch = $method[$k]
-                if ($k -gt 0 -and [char]::IsUpper($ch)) { [void]$sb.Append('_') }
+                if ($k -gt 0 -and [char]::IsUpper($ch)) {
+                    $prev = $method[$k - 1]
+                    $next = if ($k + 1 -lt $method.Length) { $method[$k + 1] } else { [char]0 }
+                    $isBoundary = ([char]::IsLower($prev) -or [char]::IsDigit($prev)) -or
+                                  ([char]::IsUpper($prev) -and [char]::IsLower($next))
+                    if ($isBoundary) { [void]$sb.Append('_') }
+                }
                 [void]$sb.Append([char]::ToLowerInvariant($ch))
             }
             $toolNames.Add($sb.ToString())

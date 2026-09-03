@@ -193,12 +193,23 @@ namespace dnSpy.MCP.Mcp {
             public bool Required { get; init; }
         }
 
+        /// <summary>
+        /// Converts PascalCase to snake_case at word boundaries: lower/digit → Upper starts a
+        /// new word, and the last Upper of an acronym followed by a lower starts a new word.
+        /// Trailing acronyms stay clamped ("RefreshUI" → "refresh_ui", not "refresh_u_i").
+        /// </summary>
         internal static string ToSnakeCase(string name) {
             var sb = new System.Text.StringBuilder(name.Length + 10);
             for (int i = 0; i < name.Length; i++) {
                 var c = name[i];
-                if (i > 0 && char.IsUpper(c))
-                    sb.Append('_');
+                if (i > 0 && char.IsUpper(c)) {
+                    var prev = name[i - 1];
+                    var next = i + 1 < name.Length ? name[i + 1] : '\0';
+                    var isBoundary = (char.IsLower(prev) || char.IsDigit(prev))
+                        || (char.IsUpper(prev) && char.IsLower(next));
+                    if (isBoundary)
+                        sb.Append('_');
+                }
                 sb.Append(char.ToLowerInvariant(c));
             }
             return sb.ToString();

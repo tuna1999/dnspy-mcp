@@ -63,8 +63,8 @@ dnspy_mcp/
 
 ## Architecture
 
-### Why HttpListener Instead of MCP SDK?
-The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: custom HTTP transport via `System.Net.HttpListener`.
+### Why TcpListener Instead of MCP SDK?
+The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: minimal custom HTTP transport over `System.Net.Sockets.TcpListener` (see `McpServerHost` / `BufferedLineReader`).
 
 ### Extension Lifecycle
 ```
@@ -72,7 +72,7 @@ dnSpy starts
   → MEF discovers dnSpy.MCP.x.dll
   → TheExtension constructor: [Import] gets services
   → OnEvent(ExtensionEvent.AppLoaded): DnSpyContext.Initialize(...) + EnsureOutputPane()
-  → User clicks Start (or AutoStart=true in Settings) → HttpListener starts
+  → User clicks Start (or AutoStart=true in Settings) → TcpListener server starts
 ```
 
 Server starts on **manual click** (not at launch) so `EnsureOutputPane()` runs on a fully initialized WPF UI thread.
@@ -129,7 +129,7 @@ POST /  [{"method":"tools/call","params":{"name":"load_assembly","arguments":{"p
 
 ### Server Hardening
 `McpServerHost` has these protections:
-- **Request body limit**: 1MB max (`ContentLength64` check)
+- **Request body limit**: 1MB max (checked from the `Content-Length` header before the body is read)
 - **Concurrency limit**: `SemaphoreSlim(4)` — max 4 simultaneous requests
 - **`volatile _running`**: thread-safe flag, set after listener starts
 - **Auth fail-closed**: if `RequireAuth=true` but `ApiToken` is empty, the server refuses to start (`InvalidOperationException`). Auth config is snapshotted at `StartAsync` so in-flight settings edits can't race the comparison. Token compared with `CryptographicOperations.FixedTimeEquals` (constant-time, no timing leak).
@@ -140,7 +140,7 @@ POST /  [{"method":"tools/call","params":{"name":"load_assembly","arguments":{"p
 - **Tool execution timeout**: configurable via `ToolTimeoutSeconds` (default 30s)
 
 ### WPF Thread Safety
-MCP tools run on **background threads** (HttpListener thread pool). All WPF TreeView/UI access must marshal to the UI thread:
+MCP tools run on **background threads** (accepted-connection handler tasks). All WPF TreeView/UI access must marshal to the UI thread:
 ```csharp
 // CORRECT
 var dispatcher = Application.Current?.Dispatcher;
@@ -245,7 +245,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 | Tool | Description |
 |------|-------------|
 | `get_selected_node` | Currently selected node in TreeView |
-| `refresh_u_i` | Refresh TreeView after metadata changes |
+| `refresh_ui` | Refresh TreeView after metadata changes |
 | `rename_namespace` | Rename namespace across matching types (dry-run by default) |
 | `rename_class` | Rename one class (dry-run by default) |
 | `rename_method` | Rename methods by exact/partial match (dry-run by default) |
@@ -263,7 +263,7 @@ return output.ToString();  // NOT: output.Text
 // WRONG: output.Text                              // property doesn't exist
 ```
 
-### System.Text.Json 8.x Limitations
+### System.Text.Json Limitations
 `JsonArray` does NOT implement LINQ — use for-loop iteration:
 ```csharp
 var list = new List<JsonNode?>();

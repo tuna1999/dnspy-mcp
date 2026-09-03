@@ -243,7 +243,7 @@ public sealed class DecompilerTools {
 ```
 
 `TreeViewTools` stays static (Extension-only — uses `DnSpyContext.TreeView`,
-no `McpContext` needed). Provides `get_selected_node` and `refresh_u_i`.
+no `McpContext` needed). Provides `get_selected_node` and `refresh_ui`.
 
 ### ToolRegistry — hybrid instance/static discovery
 
@@ -615,7 +615,7 @@ Phases (high-level; full step-by-step plan in subsequent writing-plans output):
 ### Tool count after migration
 
 - Extension: **38 tools** (13 Core classes × ~3 tools + TreeViewTools × 2)
-- Headless: **36 tools** (no `get_selected_node`, no `refresh_u_i`)
+- Headless: **36 tools** (no `get_selected_node`, no `refresh_ui`)
 
 `verify-tool-count.ps1` checks Core tools dir for both binaries; Extension
 includes its own 2 tools via separate scan.

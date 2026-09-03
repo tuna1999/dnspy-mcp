@@ -53,7 +53,7 @@ $csprojContent = Get-Content $projectFileForTfm -Raw
 if ($csprojContent -match '<TargetFramework>([^<]+)</TargetFramework>') {
     $projectTfm = $Matches[1]
 } else {
-    $projectTfm = "net8.0-windows"
+    $projectTfm = "net10.0-windows"
 }
 
 # Check dnSpy runtime version compatibility (only when runtimeconfig exists)

@@ -5,15 +5,15 @@ MCP (Model Context Protocol) server extension for [dnSpy](https://github.com/dnS
 ## How It Works
 
 ```
-dnSpy loads extension → MCP Server menu → Start → HttpListener on :5150
+dnSpy loads extension → MCP Server menu → Start → TcpListener on :5150
                                                         ↕
                                               AI agent (Claude, etc.)
                                               HTTP POST (JSON-RPC 2.0)
 ```
 
-The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.NET Core or external dependencies required. AI agents connect via standard MCP protocol over HTTP.
+The server runs as a dnSpy extension using a minimal custom HTTP transport over `System.Net.Sockets.TcpListener` — no ASP.NET Core, MCP SDK, or external dependencies required. AI agents connect via standard MCP protocol over HTTP.
 
-## Tools (36)
+## Tools (38)
 
 ### Decompiler
 | Tool | Description |
@@ -44,7 +44,7 @@ The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.
 | Tool | Description |
 |------|-------------|
 | `get_selected_node` | Get the currently selected node in dnSpy tree view |
-| `refresh_u_i` | Refresh tree view UI after metadata changes |
+| `refresh_ui` | Refresh tree view UI after metadata changes |
 
 ### Rename
 | Tool | Description |
@@ -86,6 +86,9 @@ The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.
 ### Assembly
 | Tool | Description |
 |------|-------------|
+| `load_assembly` | Load a .NET DLL/EXE into dnSpy by absolute path |
+| `close_assembly` | Unload an assembly by simple name (case-insensitive) |
+| `list_loaded_assemblies` | List all loaded binaries: name, MVID, type count, path |
 | `assembly_overview` | Module info, version, entry point, type count, references |
 | `assembly_list_namespaces` | All namespaces in the loaded assembly |
 | `assembly_list_types` | Type listing with optional regex filter |
@@ -102,9 +105,9 @@ The server runs as a dnSpy extension using `System.Net.HttpListener` — no ASP.
 
 ### Prerequisites
 
-- [dnSpy](https://github.com/dnSpyEx/dnSpy/releases) (.NET 8.0 build)
-- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- `deps/` folder with these DLLs copied from dnSpy:
+- [dnSpy](https://github.com/dnSpyEx/dnSpy/releases) (.NET 10 build, e.g. dnSpyEx v6.6.0+)
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- `deps/` folder with these DLLs copied from the dnSpy `bin` folder:
   - `dnSpy.Contracts.DnSpy.dll`
   - `dnSpy.Contracts.Logic.dll`
   - `ICSharpCode.Decompiler.dll`
@@ -125,41 +128,40 @@ dotnet build -p:DnSpyBin="D:\path\to\dnSpy\bin"
 ```
 
 ### Build & Deploy
-
 ```powershell
-# 1) Build only (Release mặc định)
-pwsh scripts/build.ps1
+# 1) Build only (Release default)
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy"
 
 # 2) Clean + build
-pwsh scripts/build.ps1 -Clean
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Clean
 
-# 3) Build + deploy to staging (build/Extensions/)
-pwsh scripts/build.ps1 -Deploy
+# 3) Build + deploy into <DnSpyPath>\bin\Extensions
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy
 
-# 4) Build + deploy directly to dnSpy runtime
-pwsh scripts/build.ps1 -Deploy -DeployDir "D:\tools\dnSpy\Extensions"
+# 4) Build + deploy to a custom folder
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy -DeployDir "D:\tools\dnSpy\bin\Extensions"
 
-# 5) Override sang Debug khi cần debug
-pwsh scripts/build.ps1 -Configuration Debug -Deploy -DeployDir "D:\tools\dnSpy\Extensions"
+# 5) Debug build + deploy
+pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Configuration Debug -Deploy
 ```
 
 This builds the extension DLL and deploys it. **dnSpy must be closed** before running.
 
 Options:
 ```powershell
-pwsh scripts/build.ps1 -Clean                        # Clean before build
-pwsh scripts/build.ps1 -Deploy                       # Deploy after build
-pwsh scripts/build.ps1 -DeployDir "<path>"          # Custom deploy target (used with -Deploy)
-pwsh scripts/build.ps1 -Configuration Debug          # Build Debug instead of Release
-pwsh scripts/build.ps1 -Configuration Release        # Build Release (default)
+pwsh scripts/build.ps1 -DnSpyPath "<path>"    # Required: dnSpy folder (DLLs from its bin\)
+pwsh scripts/build.ps1 ... -Clean             # Clean before build
+pwsh scripts/build.ps1 ... -Deploy            # Deploy after build
+pwsh scripts/build.ps1 ... -DeployDir "<path>" # Custom deploy target (used with -Deploy)
+pwsh scripts/build.ps1 ... -Configuration Debug   # Build Debug instead of Release
 ```
 
 ### Build output paths
 
-- Build output (Release default): `src/dnSpy.MCP/bin/Release/net8.0-windows/dnSpy.MCP.x.dll`
-- Build output (Debug override): `src/dnSpy.MCP/bin/Debug/net8.0-windows/dnSpy.MCP.x.dll`
-- Staging deploy: `build/Extensions/dnSpy.MCP.x.dll`
-- Runtime deploy: `<dnSpy-folder>/Extensions/dnSpy.MCP.x.dll`
+- Build output (Release default): `src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll`
+- Build output (Debug override): `src/dnSpy.MCP/bin/Debug/net10.0-windows/dnSpy.MCP.x.dll`
+- Runtime deploy (default): `<DnSpyPath>/bin/Extensions/dnSpy.MCP.x.dll`
+- Runtime deploy (custom `-DeployDir`): `<DeployDir>/dnSpy.MCP.x.dll`
 
 Only these files should be copied to dnSpy's `Extensions` folder:
 - `dnSpy.MCP.x.dll`
@@ -181,9 +183,11 @@ Do not copy the whole `build/Extensions` folder recursively into dnSpy (avoid ne
 | Menu Item | Action |
 |-----------|--------|
 | **Start** | Start the MCP HTTP server |
+| **Stop** | Stop the MCP HTTP server |
 | **Status** | Show running/stopped state and port |
 | **Show Log** | Display recent log entries |
 | **Clear Log** | Clear log file and output window |
+| **Settings...** | Open dnSpy Options → MCP Server |
 
 ## Project Structure
 
@@ -192,24 +196,26 @@ dnspy_mcp/
 ├── src/
 │   └── dnSpy.MCP/             # Standalone extension project (recommended)
 │       ├── Mcp/
-│       │   ├── McpServerHost.cs     # HTTP transport + JSON-RPC 2.0 dispatch
+│       │   ├── McpServerHost.cs     # TcpListener HTTP transport + JSON-RPC 2.0 dispatch
 │       │   ├── ToolRegistry.cs      # Reflection-based tool discovery
-│       │   ├── McpLogger.cs         # Logging: file + Output Window
-│       │   └── McpServerOptions.cs  # Port/host configuration
-│       ├── Tools/                   # 13 tool classes, 36 tools total
+│       │   ├── JsonRpc.cs           # JSON-RPC response builders (pure, unit-tested)
+│       │   ├── BufferedLineReader.cs # Buffered HTTP line reader (pure, unit-tested)
+│       │   └── McpLogger.cs         # Logging: file + Output Window
+│       ├── Tools/                   # 14 tool classes, 38 tools total
 │       ├── Helpers/
 │       │   ├── MethodResolver.cs    # Resolve methods/types by name/token
 │       │   └── TextDecompilerOutput.cs
+│       ├── Settings/                # dnSpy Options page (port, host, auth, limits)
 │       ├── TheExtension.cs          # MEF entry point
 │       ├── DnSpyContext.cs          # Static service bridge
 │       └── MenuCommands.cs          # dnSpy menu items
 ├── deps/                        # dnSpy contract DLLs (for standalone build)
-├── build/Extensions/           # Deployed extension DLLs
-├── skills/                     # AI agent workflow guides (install to .claude/skills/)
-│   └── deobfuscate-dotnet/     # .NET deobfuscation skill
+├── skills/                      # AI agent workflow guides (install to .claude/skills/)
+│   └── deobfuscate-dotnet/      # .NET deobfuscation skill
 │       └── SKILL.md
 └── scripts/
-    └── build.ps1           # Build & deploy script
+    ├── build.ps1               # Build & deploy script
+    └── verify-tool-count.ps1   # CI guard: tool count vs CLAUDE.md
 ```
 
 ## Adding New Tools
@@ -241,22 +247,28 @@ Method names are automatically converted to `snake_case` for the MCP protocol (e
 
 ## Configuration
 
-Default configuration in `McpServerOptions.cs`:
-- **Host**: `127.0.0.1`
+Defaults live in `src/dnSpy.MCP/Settings/McpSettings.cs` and are editable in dnSpy via **Options → MCP Server**:
+- **Host**: `127.0.0.1` (loopback only by default; `0.0.0.0` binds all interfaces)
 - **Port**: `5150`
+- **AutoStart**: start the server when dnSpy launches (off)
+- **RequireAuth / ApiToken**: require `Authorization: Bearer <token>` (off by default)
+- **AllowedOrigins**: CORS origins allowed to call the server (empty = CORS disabled)
+- **MaxConcurrency**: `4` simultaneous in-flight requests
+- **MaxRequestSizeMB**: `1` MB request body cap
+- **ToolTimeoutSeconds**: `30`s per tool call
 
 ## Logging
 
 Logs are written to three destinations:
-- **File**: `build/Extensions/mcp-server.log`
+- **File**: `mcp-server.log` in the dnSpy `bin` folder (rotates at 5 MB, keeps 3 backups)
 - **In-memory**: Viewable via MCP Server → Show Log
 - **Output Window**: View → Output → MCP Server (in dnSpy)
 
 ## Architecture Notes
 
-### Why HttpListener instead of MCP SDK?
+### Why a custom TcpListener transport instead of MCP SDK?
 
-The official MCP SDK (`ModelContextProtocol` 1.2.0) pulls `Microsoft.Extensions.*` 10.x dependencies, but dnSpy runs on .NET 8.0 with `Microsoft.Extensions.*` 8.x. This is a hard version conflict that cannot be resolved with binding redirects. The solution is a custom HTTP transport using `System.Net.HttpListener`.
+The official MCP SDK (`ModelContextProtocol` 1.2.0) pulls `Microsoft.Extensions.*` 10.x dependencies that conflict with the versions dnSpy ships on its .NET runtime. This is a hard version conflict that cannot be resolved with binding redirects. The solution is a minimal custom HTTP transport over `System.Net.Sockets.TcpListener`.
 
 ### Standalone Build
 
@@ -332,7 +344,7 @@ claude mcp remove dnspy  # remove a server
 3. In your AI agent, verify the connection:
 
 ```
-You should see 36 MCP tools available:
+You should see 38 MCP tools available:
 - decompile_method
 - decompile_type
 - search_types

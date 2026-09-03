@@ -45,30 +45,6 @@
                 </StackPanel>
             </GroupBox>
 
-            <!-- Logging -->
-            <GroupBox Header="Logging" Margin="0,0,0,8">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Log Level:" VerticalAlignment="Center" />
-                    <ComboBox Grid.Row="0" Grid.Column="1" SelectedIndex="{Binding LogLevel}" Margin="4,2">
-                        <ComboBoxItem Content="DEBUG" />
-                        <ComboBoxItem Content="INFO" />
-                        <ComboBoxItem Content="WARN" />
-                        <ComboBoxItem Content="ERROR" />
-                    </ComboBox>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Max recent entries:" VerticalAlignment="Center" />
-                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxRecentLogs}" Margin="4,2" />
-                </Grid>
-            </GroupBox>
 
             <!-- Advanced -->
             <GroupBox Header="Advanced" Margin="0,0,0,8">

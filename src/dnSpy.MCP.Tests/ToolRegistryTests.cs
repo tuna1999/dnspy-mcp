@@ -10,9 +10,12 @@ public class ToolRegistryTests {
     [InlineData("GetXrefsTo", "get_xrefs_to")]
     [InlineData("UpdateMethodBody", "update_method_body")]
     [InlineData("A", "a")]
-    [InlineData("ABC", "a_b_c")]
+    [InlineData("ABC", "abc")]
     [InlineData("already_snake", "already_snake")]
-    public void ToSnakeCase_inserts_underscore_before_each_uppercase_letter(string input, string expected) {
+    [InlineData("RefreshUI", "refresh_ui")]
+    [InlineData("GetHTTPResponse", "get_http_response")]
+    [InlineData("GetIlOpcodesFormatted", "get_il_opcodes_formatted")]
+    public void ToSnakeCase_breaks_words_at_boundaries_not_every_uppercase(string input, string expected) {
         ToolRegistry.ToSnakeCase(input).Should().Be(expected);
     }
 

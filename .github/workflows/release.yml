@@ -138,6 +138,15 @@ jobs:
       - name: Build
         run: dotnet build src/dnSpy.MCP/dnSpy.MCP.csproj -c Release --nologo -v q
 
+      - name: Verify tool count matches CLAUDE.md
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: scripts/verify-tool-count.ps1
+
+      - name: Test
+        if: matrix.arch == 'x64'
+        run: dotnet test src/dnSpy.MCP.Tests/dnSpy.MCP.Tests.csproj -c Release --nologo
+
       - name: Package
         shell: pwsh
         run: |
