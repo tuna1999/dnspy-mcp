@@ -1,9 +1,8 @@
 using System;
 using System.ComponentModel.Composition;
-using dnSpy.Contracts.App;
 using dnSpy.Contracts.Menus;
 using dnSpy.Contracts.Settings.Dialog;
-using dnSpy.MCP.Mcp;
+using dnSpy.MCP.Core.Mcp;
 using dnSpy.MCP.Settings;
 using MC = dnSpy.Contracts.Menus.MenuConstants;
 
@@ -20,30 +19,29 @@ namespace dnSpy.MCP {
     [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Start", Group = McpMenuConstants.GROUP_MCP1, Order = 0)]
     sealed class StartMcpCommand : MenuItemBase {
         public override void Execute(IMenuItemContext context) {
-            var ext = DnSpyContext.Extension;
-            ext?.StartServer();
+            TheExtension.Instance?.StartServer();
         }
 
         public override bool IsVisible(IMenuItemContext context) {
-            return DnSpyContext.Extension != null;
+            return TheExtension.Instance != null;
         }
     }
 
     [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Stop", Group = McpMenuConstants.GROUP_MCP1, Order = 5)]
     sealed class StopMcpCommand : MenuItemBase {
         public override void Execute(IMenuItemContext context) {
-            DnSpyContext.Extension?.StopServer();
+            TheExtension.Instance?.StopServer();
         }
 
         public override bool IsVisible(IMenuItemContext context) {
-            return DnSpyContext.Extension != null;
+            return TheExtension.Instance != null;
         }
     }
 
     [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Status", Group = McpMenuConstants.GROUP_MCP1, Order = 10)]
     sealed class StatusCommand : MenuItemBase {
         public override void Execute(IMenuItemContext context) {
-            var ext = DnSpyContext.Extension;
+            var ext = TheExtension.Instance;
             if (ext == null) {
                 McpLogger.Warn("Extension not loaded");
                 return;
@@ -56,11 +54,13 @@ namespace dnSpy.MCP {
     [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Show Log", Group = McpMenuConstants.GROUP_MCP1, Order = 20)]
     sealed class ShowLogCommand : MenuItemBase {
         public override void Execute(IMenuItemContext context) {
-            McpLogger.Info(McpLogger.GetRecentLogs());
+            // GetRecent returns the most recent log lines; join for display.
+            var lines = McpLogger.GetRecent();
+            McpLogger.Info(string.Join(Environment.NewLine, lines));
         }
 
         public override bool IsVisible(IMenuItemContext context) {
-            return DnSpyContext.Extension != null;
+            return TheExtension.Instance != null;
         }
     }
 
@@ -72,7 +72,7 @@ namespace dnSpy.MCP {
         }
 
         public override bool IsVisible(IMenuItemContext context) {
-            return DnSpyContext.Extension != null;
+            return TheExtension.Instance != null;
         }
     }
 
@@ -89,7 +89,7 @@ namespace dnSpy.MCP {
         }
 
         public override bool IsVisible(IMenuItemContext context) {
-            return DnSpyContext.Extension != null;
+            return TheExtension.Instance != null;
         }
     }
 }

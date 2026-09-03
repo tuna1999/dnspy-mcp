@@ -3,11 +3,37 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
+using dnSpy.Contracts.Documents.Tabs;
 using dnSpy.Contracts.Documents.TreeView;
-using dnSpy.MCP.Mcp;
+using dnSpy.MCP.Core.Mcp;
 
 namespace dnSpy.MCP.Tools {
+    /// <summary>
+    /// Extension-only tool class providing the two UI-backed MCP tools
+    /// (<c>get_selected_node</c>, <c>refresh_u_i</c>) plus internal helpers used by
+    /// <see cref="dnSpy.MCP.Adapters.DnSpyTreeRefreshNotifier"/> for namespace rename
+    /// restructuring.
+    ///
+    /// Unlike the Core tool classes (which receive <see cref="dnSpy.MCP.Core.Mcp.McpContext"/>
+    /// via constructor injection), this class stays static because it is the only Extension-only
+    /// tool set and it needs direct WPF dispatcher access. <see cref="Initialize"/> is called
+    /// once by <c>TheExtension.OnEvent(AppLoaded)</c> to populate the tree view and tab service
+    /// resolved from the MEF <c>IServiceLocator</c>.
+    /// </summary>
     public static class TreeViewTools {
+        static IDocumentTreeView? _treeView;
+        static IDocumentTabService? _tabService;
+
+        /// <summary>
+        /// Populate the static tree view / tab service references. Called once during
+        /// <c>TheExtension.OnEvent(AppLoaded)</c>. Safe to call with nulls (tools will report
+        /// "not available" at call time).
+        /// </summary>
+        internal static void Initialize(IDocumentTreeView? treeView, IDocumentTabService? tabService) {
+            _treeView = treeView;
+            _tabService = tabService;
+        }
+
         static T? RunOnUIThread<T>(Func<T> action) where T : class? {
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher == null)
@@ -32,7 +58,7 @@ namespace dnSpy.MCP.Tools {
 
         [Description("Gets the currently selected node in the dnSpy tree view. Returns node type, name, and path, or empty if nothing is selected.")]
         public static string GetSelectedNode() {
-            var treeView = DnSpyContext.TreeView;
+            var treeView = _treeView;
             if (treeView == null)
                 return "Error: TreeView not available.";
 
@@ -77,7 +103,7 @@ namespace dnSpy.MCP.Tools {
         /// Dispatcher-aware tree refresh for use by rename/patch tools.
         /// </summary>
         internal static void RefreshTreeViewOnUIThread() {
-            var treeView = DnSpyContext.TreeView;
+            var treeView = _treeView;
             if (treeView == null) {
                 McpLogger.Warn("RefreshTreeView: IDocumentTreeView not resolved");
                 return;
@@ -97,7 +123,7 @@ namespace dnSpy.MCP.Tools {
         }
 
         internal static void UpdateNamespaceNode(string assembly, string oldNamespace, string newNamespace) {
-            var treeView = DnSpyContext.TreeView;
+            var treeView = _treeView;
             if (treeView == null) {
                 McpLogger.Warn("UpdateNamespaceNode: IDocumentTreeView not resolved");
                 return;
@@ -137,7 +163,7 @@ namespace dnSpy.MCP.Tools {
                             oldNsNode.TreeNode.RefreshUI();
                         }
 
-                        DnSpyContext.TabService?.RefreshModifiedDocument(modNode.Document);
+                        _tabService?.RefreshModifiedDocument(modNode.Document);
                     }
                 });
             }
@@ -148,7 +174,7 @@ namespace dnSpy.MCP.Tools {
 
         [Description("Refreshes all open document tabs in dnSpy to reflect any assembly modifications made by MCP tools.")]
         public static string RefreshUI() {
-            var treeView = DnSpyContext.TreeView;
+            var treeView = _treeView;
             if (treeView == null)
                 return "Error: TreeView not available.";
 

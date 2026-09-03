@@ -7,6 +7,11 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- TestData holds nested project fixtures; keep their files (incl. their
+         obj/ AssemblyInfo) out of this project's compile glob. -->
+    <Compile Remove="TestData\**" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
@@ -24,6 +29,11 @@
          BufferedLineReader) and internal helpers exposed via InternalsVisibleTo
          in the main project (AssemblyInfo). -->
     <ProjectReference Include="..\dnSpy.MCP\dnSpy.MCP.csproj" />
+    <ProjectReference Include="..\dnSpy.MCP.Core\dnSpy.MCP.Core.csproj" />
+    <ProjectReference Include="..\dnSpy.MCP.Headless\dnSpy.MCP.Headless.csproj" />
+    <!-- E2E fixture: built with the solution, copied to test output so the
+         headless server can preload it by relative filename. -->
+    <ProjectReference Include="TestData\SampleLibrary\SampleLibrary.csproj" />
   </ItemGroup>
 
   <ItemGroup>

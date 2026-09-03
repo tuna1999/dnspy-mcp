@@ -1589,43 +1589,156 @@ git commit -m "docs: update tool count for new architecture"
 
 Build the standalone stdio MCP server.
 
-### Task 5.1: Copy additional dnSpy DLLs into deps
+### Task 5.1: Copy additional dnSpy DLLs into deps + add sync-deps.ps1
 
 **Files:**
+- Create: `scripts/sync-deps.ps1` — idempotent script to copy deps from dnSpy install
 - Copy: from dnSpy install to `deps/`
   - `dnSpy.Decompiler.dll`
   - `dnSpy.Decompiler.ILSpy.Core.dll`
-  - `dnSpy.Decompiler.ILSpy.dll`
-  - `ICSharpCode.Decompiler.dll` (may already exist)
+  - `ICSharpCode.Decompiler.dll` (may already exist — overwrite to ensure parity)
   - `ICSharpCode.NRefactory.CSharp.dll`
   - `ICSharpCode.NRefactory.dll`
 
+Note: `dnSpy.Decompiler.ILSpy.dll` (without `.Core`) is NOT needed — Headless uses `dnSpy.Decompiler.ILSpy.Core.dll` which contains the `IDecompilerProvider` implementations. The non-Core sibling contains Extension UI hooks (DecompilerSettingsPage etc.) which are not relevant to Headless.
+
 - [ ] **Step 1: Identify dnSpy install path**
 
-The user's dnSpy install is at `D:\tools\dnSpy` (from `build.ps1` default). DLLs live at `D:\tools\dnSpy\bin\`.
+User's dnSpy install is at `D:\ProgramFiles\StandaloneTools\RETools\dnSpy\win64\bin` (win64 chosen because DLLs are AnyCPU and win64 is the default run target — verified that win32 vs win64 DLLs are byte-identical managed assemblies).
 
-- [ ] **Step 2: Copy DLLs**
+All deps are **AnyCPU managed DLLs** (PE32 + .Net assembly), so they work in any process architecture. The win64 vs win32 distinction only affects `dnSpy.exe` (native bootstrapper), not the bundled managed DLLs.
+
+- [ ] **Step 2: Write `scripts/sync-deps.ps1`**
 
 ```powershell
-$dnspy = "D:\tools\dnSpy\bin"
-Copy-Item "$dnspy\dnSpy.Decompiler.dll" deps\
-Copy-Item "$dnspy\dnSpy.Decompiler.ILSpy.Core.dll" deps\
-Copy-Item "$dnspy\dnSpy.Decompiler.ILSpy.dll" deps\
-Copy-Item "$dnspy\ICSharpCode.NRefactory.CSharp.dll" deps\
-Copy-Item "$dnspy\ICSharpCode.NRefactory.dll" deps\
+<#
+.SYNOPSIS
+    Sync dnSpy dependency DLLs from a local dnSpy installation into deps/.
+
+.DESCRIPTION
+    Copies the required dnSpy contract + decompiler DLLs from a dnSpy install
+    into the repo's deps/ folder. Idempotent — skips files that already match
+    by size + last-write-time.
+
+    Both win32 and win64 dnSpy installs ship identical AnyCPU managed DLLs;
+    this script defaults to win64 because that's the user's primary install.
+
+.PARAMETER DnSpyBin
+    Path to the dnSpy bin/ folder containing the DLLs.
+    Default: D:\ProgramFiles\StandaloneTools\RETools\dnSpy\win64\bin
+
+.EXAMPLE
+    pwsh scripts/sync-deps.ps1
+    pwsh scripts/sync-deps.ps1 -DnSpyBin "C:\dnSpy\bin"
+#>
+[CmdletBinding()]
+param(
+    [string]$DnSpyBin = "D:\ProgramFiles\StandaloneTools\RETools\dnSpy\win64\bin"
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$depsDir = Join-Path $repoRoot 'deps'
+
+if (-not (Test-Path $DnSpyBin)) {
+    throw "dnSpy bin folder not found: $DnSpyBin. Pass -DnSpyBin <path> to override."
+}
+if (-not (Test-Path $depsDir)) {
+    New-Item -ItemType Directory -Path $depsDir | Out-Null
+}
+
+# DLLs required by Core + Extension + Headless.
+# Core/Extension already use the first 4; Headless adds the Decompiler set.
+$requiredDlls = @(
+    'dnSpy.Contracts.DnSpy.dll',
+    'dnSpy.Contracts.Logic.dll',
+    'dnlib.dll',
+    'ICSharpCode.Decompiler.dll',
+    # Headless-only:
+    'dnSpy.Decompiler.dll',
+    'dnSpy.Decompiler.ILSpy.Core.dll',
+    'ICSharpCode.NRefactory.dll',
+    'ICSharpCode.NRefactory.CSharp.dll'
+)
+
+$copied = 0
+$skipped = 0
+foreach ($dll in $requiredDlls) {
+    $src = Join-Path $DnSpyBin $dll
+    $dst = Join-Path $depsDir $dll
+
+    if (-not (Test-Path $src)) {
+        Write-Warning "Missing in dnSpy install: $dll (skipped)"
+        continue
+    }
+
+    # Idempotent: skip if exists with same size + last-write-time
+    if (Test-Path $dst) {
+        $srcItem = Get-Item $src
+        $dstItem = Get-Item $dst
+        if ($srcItem.Length -eq $dstItem.Length -and
+            $srcItem.LastWriteTimeUtc -eq $dstItem.LastWriteTimeUtc) {
+            $skipped++
+            continue
+        }
+    }
+
+    Copy-Item $src $dst -Force
+    $copied++
+    Write-Host "  Copied: $dll"
+}
+
+Write-Host ""
+Write-Host "Sync complete: $copied copied, $skipped up-to-date, $($requiredDlls.Count) total expected."
+Write-Host "deps/ contents:"
+Get-ChildItem $depsDir -Filter *.dll | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
 ```
 
-If `deps\ICSharpCode.Decompiler.dll` already exists, do not overwrite (it should match).
+- [ ] **Step 3: Run sync-deps.ps1 to populate deps/**
 
-- [ ] **Step 3: Update `.gitignore` if `deps/` is ignored**
+```powershell
+pwsh scripts/sync-deps.ps1
+```
 
-Check: `cat .gitignore | Select-String deps`. If `deps/` is ignored, add a `!deps/dnSpy.Decompiler*.dll` exception so the Headless deps are tracked. Otherwise CI must download them.
+Expected: copies `dnSpy.Decompiler.dll`, `dnSpy.Decompiler.ILSpy.Core.dll`, `ICSharpCode.NRefactory.dll`, `ICSharpCode.NRefactory.CSharp.dll` (the 4 new ones). The first 4 should be "up-to-date" (already in deps from earlier setup).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Update `.gitignore` to track deps (with deps/*.md kept ignored)**
+
+Current `.gitignore` has `deps/` which ignores the entire folder. CI currently downloads deps separately. For Headless to work out-of-the-box, we need to either:
+- **Option a**: Keep `deps/` ignored, document that `sync-deps.ps1` must be run after clone
+- **Option b**: Track the 8 specific DLLs in git (vendoring)
+
+**Choose Option a** (keep ignored) — matches existing CI pattern (which downloads deps from dnSpy release) and avoids bloating the repo. Document `sync-deps.ps1` in CLAUDE.md and `build.yml`.
+
+No `.gitignore` change needed. The DLLs in `deps/` will be local-only; CI's existing dnSpy-download step covers it; developers run `sync-deps.ps1` once.
+
+- [ ] **Step 5: Update CLAUDE.md setup section to mention sync-deps.ps1**
+
+Edit CLAUDE.md Setup section:
+
+```powershell
+mkdir deps
+# Option A (recommended): run the sync script against a local dnSpy install
+pwsh scripts/sync-deps.ps1  # uses D:\ProgramFiles\StandaloneTools\RETools\dnSpy\win64\bin by default
+pwsh scripts/sync-deps.ps1 -DnSpyBin "C:\path\to\dnSpy\bin"  # override path
+
+# Option B (manual): copy these DLLs from a dnSpy installation's bin/ folder:
+#   dnSpy.Contracts.DnSpy.dll
+#   dnSpy.Contracts.Logic.dll
+#   dnlib.dll
+#   ICSharpCode.Decompiler.dll
+#   # Headless-only:
+#   dnSpy.Decompiler.dll
+#   dnSpy.Decompiler.ILSpy.Core.dll
+#   ICSharpCode.NRefactory.dll
+#   ICSharpCode.NRefactory.CSharp.dll
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add deps/ .gitignore
-git commit -m "chore: vendor dnSpy decompiler DLLs for Headless project"
+git add scripts/sync-deps.ps1 CLAUDE.md
+git commit -m "chore: add sync-deps.ps1 to copy dnSpy DLLs from local install"
 ```
 
 ### Task 5.2: Create Headless csproj

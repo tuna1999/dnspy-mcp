@@ -130,24 +130,27 @@ jobs:
           }
 
           New-Item -ItemType Directory -Path "deps" -Force | Out-Null
-          @("dnSpy.Contracts.DnSpy.dll","dnSpy.Contracts.Logic.dll","ICSharpCode.Decompiler.dll","dnlib.dll") | ForEach-Object {
+          @(
+            "dnSpy.Contracts.DnSpy.dll", "dnSpy.Contracts.Logic.dll",
+            "ICSharpCode.Decompiler.dll", "dnlib.dll",
+            "dnSpy.Decompiler.dll", "dnSpy.Decompiler.ILSpy.Core.dll",
+            "ICSharpCode.NRefactory.dll", "ICSharpCode.NRefactory.CSharp.dll"
+          ) | ForEach-Object {
             Copy-Item (Join-Path $binDir $_) "deps/" -Force
           }
           Write-Host "deps/ ready (${{ matrix.arch }})"
 
-      - name: Build
-        run: dotnet build src/dnSpy.MCP/dnSpy.MCP.csproj -c Release --nologo -v q
+      - name: Build solution
+        run: dotnet build dnspy_mcp.sln -c Release --nologo -v q
 
-      - name: Verify tool count matches CLAUDE.md
+      - name: Test (unit + headless E2E)
+        run: dotnet test src/dnSpy.MCP.Tests -c Release --nologo --no-build
+
+      - name: Publish headless (x64 leg only — AnyCPU bundle)
         if: matrix.arch == 'x64'
-        shell: pwsh
-        run: scripts/verify-tool-count.ps1
+        run: dotnet publish src/dnSpy.MCP.Headless/dnSpy.MCP.Headless.csproj -c Release -o publish/headless --nologo -v q
 
-      - name: Test
-        if: matrix.arch == 'x64'
-        run: dotnet test src/dnSpy.MCP.Tests/dnSpy.MCP.Tests.csproj -c Release --nologo
-
-      - name: Package
+      - name: Package extension
         shell: pwsh
         run: |
           $outDir = "release-out"
@@ -158,7 +161,27 @@ jobs:
           Compress-Archive -Path "$outDir/*" -DestinationPath "dnSpy.MCP.x-${{ matrix.arch }}.zip" -Force
           Write-Host "Packaged: dnSpy.MCP.x-${{ matrix.arch }}.zip"
 
+      - name: Package headless (x64 leg only — AnyCPU bundle)
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish/headless/*" -DestinationPath "dnspy-mcp-headless.zip" -Force
+          Write-Host "Packaged: dnspy-mcp-headless.zip"
+
       - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.arch }}
+          path: dnSpy.MCP.x-${{ matrix.arch }}.zip
+          retention-days: 1
+
+      - name: Upload artifact (headless)
+        if: matrix.arch == 'x64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-headless
+          path: dnspy-mcp-headless.zip
+          retention-days: 1
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.arch }}
@@ -174,9 +197,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
         with:
           persist-credentials: true
           fetch-depth: 0
+
+      - name: Download headless artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-headless
+          path: ./artifacts
 
       - name: Download x64 artifact
         uses: actions/download-artifact@v4
@@ -200,11 +230,7 @@ jobs:
             $log = git log "$previousTag..HEAD" --oneline --pretty="- %s"
           }
           $log | Out-File -FilePath "CHANGELOG.txt" -Encoding utf8
-          Write-Host "Changelog generated ($(($log | Measure-Object).Count) commits)"
 
-      - name: Create GitHub Release
-        shell: pwsh
-        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ needs.prepare.outputs.tag }}"
@@ -227,10 +253,16 @@ jobs:
           2. Extract to ``<dnSpy>/bin/Extensions/``
           3. Restart dnSpy
           4. Start MCP Server from the Tools menu
+
+          ### Headless (standalone, no dnSpy needed)
+          - ``dnspy-mcp-headless.zip`` — stdio MCP server for batch analysis.
+             Requires the .NET 10 runtime. Extract anywhere, then run:
+             ``dnspy-mcp-headless.exe --load path\to\target.dll``
           "@
 
           gh release create $tag `
             "./artifacts/dnSpy.MCP.x-x64.zip" `
             "./artifacts/dnSpy.MCP.x-x86.zip" `
+            "./artifacts/dnspy-mcp-headless.zip" `
             --title "v$version" `
             --notes $releaseBody

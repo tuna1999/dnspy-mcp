@@ -1,23 +1,23 @@
-# Build and deploy dnSpy MCP extension
-# Supports standalone (src/dnSpy.MCP/) layout
-# Usage: .\build.ps1 [-DnSpyPath <path>] [-Clean] [-Deploy] [-DeployDir <path>] [-Configuration <Debug|Release>]
+# Build and deploy dnSpy MCP (Core + Extension + Headless + Tests)
+# Usage: .\build.ps1 -DnSpyPath <path> [-Clean] [-Deploy] [-DeployDir <path>] [-Configuration <Debug|Release>] [-PublishHeadless]
 #
 # Required:
 #   -DnSpyPath  Path to dnSpy installation folder (must contain dnSpy.exe in its bin/ folder)
 #
 # Examples:
-#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy"              # Build Release, DLLs from dnSpy/bin
-#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Clean       # Clean + build Release
-#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy      # Build + deploy to dnSpy\Extensions
-#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Configuration Debug  # Build Debug
-#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -DeployDir "D:\tools\dnSpy\Extensions"
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy"                        # Build solution (Release)
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Clean                 # Clean + build solution
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy                # Build + deploy extension to dnSpy\bin\Extensions
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -PublishHeadless       # Also publish headless to publish/headless/
+#   .\build.ps1 -DnSpyPath "D:\tools\dnSpy" -Configuration Debug   # Debug configuration
 
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$DnSpyPath,           # Path to dnSpy installation (e.g. D:\tools\dnSpy)
     [switch]$Clean,               # Clean build artifacts before building
     [switch]$Deploy,              # Deploy extension after building
-    [string]$DeployDir = "",      # Custom deploy path (default: <DnSpyPath>\Extensions)
+    [string]$DeployDir = "",      # Custom deploy path (default: <DnSpyPath>\bin\Extensions)
+    [switch]$PublishHeadless,     # Publish standalone headless MCP server
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release"  # Build configuration (default: Release)
 )
@@ -29,21 +29,11 @@ $WorkspaceRoot = Split-Path -Parent (Split-Path $MyInvocation.MyCommand.Path -Pa
 $DnSpyPath = $DnSpyPath.TrimEnd('\', '/')
 $DnSpyBin = Join-Path $DnSpyPath "bin"
 
-# Validate required DLLs
-$RequiredDlls = @(
-    "dnSpy.Contracts.DnSpy.dll",
-    "dnSpy.Contracts.Logic.dll",
-    "ICSharpCode.Decompiler.dll",
-    "dnlib.dll"
-)
-$missingDlls = $RequiredDlls | Where-Object { -not (Test-Path (Join-Path $DnSpyBin $_)) }
-if ($missingDlls.Count -gt 0) {
-    Write-Host "[ERROR] Missing required DLLs in: $DnSpyBin" -ForegroundColor Red
-    $missingDlls | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
-    Write-Host ""
-    Write-Host "Ensure -DnSpyPath points to a valid dnSpy installation." -ForegroundColor Yellow
-    Write-Host "The following DLLs must exist in the dnSpy bin folder:" -ForegroundColor Yellow
-    $RequiredDlls | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
+# Sync dnSpy dependency DLLs into deps/ (idempotent; Core/Extension/Headless
+# all resolve references from deps/ via the <DnSpyBin> csproj property).
+& (Join-Path $PSScriptRoot "sync-deps.ps1") -DnSpyBin $DnSpyBin
+if (-not $?) {
+    Write-Host "[ERROR] sync-deps.ps1 failed." -ForegroundColor Red
     exit 1
 }
 
@@ -88,57 +78,65 @@ if ([string]::IsNullOrWhiteSpace($DeployDir)) {
 }
 
 # Project paths
-$StandaloneDir = Join-Path $WorkspaceRoot "src\dnSpy.MCP"
-$ProjectDir = $StandaloneDir
-$ProjectFile = Join-Path $ProjectDir "dnSpy.MCP.csproj"
+$SolutionFile = Join-Path $WorkspaceRoot "dnspy_mcp.sln"
+$ProjectDir = Join-Path $WorkspaceRoot "src\dnSpy.MCP"
 $BinDir = Join-Path $ProjectDir "bin\$Configuration\$projectTfm"
-$ObjDir = Join-Path $ProjectDir "obj"
+$HeadlessPublishDir = Join-Path $WorkspaceRoot "publish\headless"
 
 Write-Host "=== dnSpy MCP ===" -ForegroundColor Cyan
-Write-Host "  Project:  $ProjectDir"
+Write-Host "  Solution: $SolutionFile"
 Write-Host "  Config:   $Configuration"
 Write-Host "  DnSpyBin: $DnSpyBin"
 if ($Deploy) {
     Write-Host "  Deploy:   $DeployDir"
 }
+if ($PublishHeadless) {
+    Write-Host "  Publish:  $HeadlessPublishDir (headless)"
+}
 Write-Host ""
 
-# Step 0: Clean
+# Step 0: Clean (all src projects)
 if ($Clean) {
     Write-Host "[Clean] Cleaning..." -ForegroundColor Yellow
-
-    # Clean project obj/
-    if (Test-Path $ObjDir) {
-        Get-ChildItem $ObjDir -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-    }
-    # Clean project bin/<Config>/
-    if (Test-Path $BinDir) {
-        Get-ChildItem $BinDir -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+    & dotnet clean $SolutionFile -c $Configuration --nologo -v q | Out-Null
+    foreach ($dir in @("dnSpy.MCP", "dnSpy.MCP.Core", "dnSpy.MCP.Headless", "dnSpy.MCP.Tests")) {
+        foreach ($sub in @("obj", "bin")) {
+            $p = Join-Path $WorkspaceRoot "src\$dir\$sub"
+            if (Test-Path $p) {
+                Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
     Write-Host "  Done." -ForegroundColor DarkGray
 }
 
-# Step 1: Build
-$prefix = if ($Clean) { "[Build]" } else { "[Build]" }
-Write-Host "$prefix Building..." -ForegroundColor Yellow
-if (-not (Test-Path $ProjectFile)) {
-    Write-Host "  ERROR: Project not found: $ProjectFile" -ForegroundColor Red
-    exit 1
-}
+# Step 1: Build the whole solution (Core + Extension + Headless + Tests)
+Write-Host "[Build] Building solution..." -ForegroundColor Yellow
 
-$buildOutput = & dotnet build $ProjectFile -c $Configuration -p:DnSpyBin="$DnSpyBin" 2>&1
+$buildOutput = & dotnet build $SolutionFile -c $Configuration 2>&1
 $buildText = $buildOutput | Out-String
 
-if ($buildText -notmatch "Build succeeded") {
+if ($LASTEXITCODE -ne 0) {
     Write-Host "[BUILD FAILED]" -ForegroundColor Red
-    $buildOutput | Where-Object { $_ -match "error CS" } | ForEach-Object {
+    $buildOutput | Where-Object { $_ -match "error CS|error MSB" } | ForEach-Object {
         Write-Host "  $_" -ForegroundColor Red
     }
     exit 1
 }
 
-$errorCount = if ($buildText -match "(\d+) Error\(s\)") { $Matches[1] } else { "?" }
-Write-Host "  OK ($errorCount errors)" -ForegroundColor Green
+Write-Host "  OK" -ForegroundColor Green
+
+# Step 1b: Publish standalone headless MCP server (optional)
+if ($PublishHeadless) {
+    Write-Host "[Publish] Headless..." -ForegroundColor Yellow
+    & dotnet publish (Join-Path $WorkspaceRoot "src\dnSpy.MCP.Headless\dnSpy.MCP.Headless.csproj") `
+        -c $Configuration -o $HeadlessPublishDir --nologo -v q
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[PUBLISH FAILED]" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  OK: $HeadlessPublishDir" -ForegroundColor Green
+}
 
 # Step 2: Deploy
 if ($Deploy) {
@@ -188,6 +186,9 @@ Write-Host "[Ready]" -ForegroundColor Yellow
 Write-Host "  Deploy:  $DeployDir\dnSpy.MCP.x.dll"
 if ($Deploy) {
     Write-Host "  Log:     $DnSpyBin\mcp-server.log"
+}
+if ($PublishHeadless) {
+    Write-Host "  Headless: $HeadlessPublishDir\dnspy-mcp-headless.dll (run: dotnet dnspy-mcp-headless.dll --load <dll>)"
 }
 Write-Host "  Port:    5150"
 Write-Host ""

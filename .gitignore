@@ -2,6 +2,7 @@
 **/bin/
 **/obj/
 build/
+publish/
 
 # User / IDE
 .vs/

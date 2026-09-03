@@ -46,8 +46,9 @@
   <ItemGroup>
     <!-- NuGet package references -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" />
+    <ProjectReference Include="..\dnSpy.MCP.Core\dnSpy.MCP.Core.csproj" />
     <!-- VS.Text.UI.Wpf pulls in the transitive CoreUtility assembly that provides
-         IContentType (used by IOutputService.Create at DnSpyContext.EnsureOutputPane).
+         IContentType (used by IOutputService.Create at TheExtension.EnsureOutputPane).
          No direct source reference, but removing it breaks the build (CS0012). -->
     <PackageReference Include="Microsoft.VisualStudio.Text.UI.Wpf" Version="$(MSVSTextVersion)" />
     <PackageReference Include="System.ComponentModel.Composition" Version="$(SCCompositionVersion)" />
