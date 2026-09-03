@@ -4,6 +4,7 @@ using dnlib.DotNet;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Text;
 using dnSpy.MCP.Core.Abstractions;
+using dnSpy.MCP.Core.Mcp;
 
 namespace dnSpy.MCP.Core.Adapters;
 
@@ -43,7 +44,11 @@ public sealed class DnSpyDecompilerSourceProvider : ISourceDecompiler {
         Action<IDecompiler, IDecompilerOutput, DecompilationContext> decompose) {
         var writer = new StringWriter();
         using var output = new TextWriterDecompilerOutput(writer, DefaultIndenter);
-        decompose(_decompiler, output, new DecompilationContext());
+        // Token from McpServerHost's tool timeout — the decompiler aborts instead of
+        // running to completion as an abandoned CPU-burning task after a client timeout.
+        decompose(_decompiler, output, new DecompilationContext {
+        CancellationToken = ToolCallScope.Token
+        });
         return writer.ToString();
     }
 }

@@ -126,7 +126,9 @@ namespace dnSpy.MCP {
                 uiScheduler,
                 new DnSpyLogSink(uiScheduler, _outputPane),
                 new DnSpyTreeRefreshNotifier(treeView, tabService, DocumentService, uiScheduler));
-            var registry = new ToolRegistry(ctx, typeof(McpContext).Assembly);
+            // Core assembly holds the 36 instance tools; the Extension assembly holds
+            // Extension-only static tools (TreeViewTools: get_selected_node, refresh_u_i).
+            var registry = new ToolRegistry(ctx, typeof(McpContext).Assembly, typeof(TheExtension).Assembly);
             _serverHost = new McpServerHost(Settings!, registry);
             Task.Run(async () => {
                 try {

@@ -389,6 +389,13 @@ namespace dnSpy.MCP.Core.Mcp
             try
             {
                 var timeout = TimeSpan.FromSeconds(_settings.ToolTimeoutSeconds);
+                // Auto-cancel at the same instant WaitAsync gives up. Without this, an abandoned
+                // slow decompile (obfuscated malware methods can run for minutes) keeps burning
+                // a thread-pool thread after the client already got the timeout error — retries
+                // pile up and everything gets slower. ToolCallScope flows the token into
+                // DnSpyDecompilerSourceProvider via AsyncLocal (Task.Run captures it below).
+                using var timeoutCts = new CancellationTokenSource(timeout);
+                ToolCallScope.Set(timeoutCts.Token);
 
                 // Destructive tools (patch/rename) must run under the mutation lock so concurrent
                 // batch requests can't race on dnlib metadata. Read-only tools stay fully parallel.
@@ -418,6 +425,7 @@ namespace dnSpy.MCP.Core.Mcp
                 }
                 finally
                 {
+                    ToolCallScope.Set(CancellationToken.None);
                     heldLock?.Release();
                 }
             }

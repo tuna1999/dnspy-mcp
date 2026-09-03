@@ -10,7 +10,8 @@ namespace dnSpy.MCP.Core.Mcp {
     /// Reflection-based tool discovery. Supports a hybrid of:
     ///   - Instance tool classes with ctor(McpContext) — the new Core pattern.
     ///   - Static tool classes (Extension-only legacy, e.g. TreeViewTools) — kept static.
-    /// Tool classes must live in a namespace starting with "dnSpy.MCP.Tools".
+    /// Tool classes must live in a namespace starting with "dnSpy.MCP.Core.Tools"
+    /// (Core instance tools) or "dnSpy.MCP.Tools" (Extension-only static tools).
     /// </summary>
     public sealed class ToolRegistry {
         private readonly Dictionary<string, ToolEntry> _tools = new();
@@ -68,12 +69,14 @@ namespace dnSpy.MCP.Core.Mcp {
 
         /// <summary>
         /// A type qualifies as a tool class if:
-        ///   - It lives in a namespace starting with "dnSpy.MCP.Tools".
+        ///   - It lives in "dnSpy.MCP.Core.Tools*" (Core instance tools) or
+        ///     "dnSpy.MCP.Tools*" (Extension-only static tools, e.g. TreeViewTools).
         ///   - It is a class (not interface/struct).
         ///   - It is a static class (abstract+sealed) OR a concrete class with ctor(McpContext).
         /// </summary>
         private static bool IsToolClass(Type type) {
-            if (type.Namespace is null || !type.Namespace.StartsWith("dnSpy.MCP.Tools"))
+            if (type.Namespace is null ||
+                !(type.Namespace.StartsWith("dnSpy.MCP.Core.Tools") || type.Namespace.StartsWith("dnSpy.MCP.Tools")))
                 return false;
             if (!type.IsClass) return false;
             if (type.IsAbstract && type.IsSealed) return true;  // static class
@@ -252,7 +255,14 @@ namespace dnSpy.MCP.Core.Mcp {
         /// </summary>
         private static readonly string[] s_mutationPrefixes = { "update_", "rename_", "patch_" };
 
-        internal static bool IsMutationTool(string toolName) {
+        /// <summary>
+        /// Destructive tools that mutate in-process dnlib metadata. Both hosts (Extension
+        /// HTTP via McpServerHost._mutationLock, Headless stdio via MutationGate filter) use
+        /// this predicate so the same prefix list governs both transports — change it once
+        /// and both sides follow.
+        /// Convention: any tool whose name starts with a mutation prefix is treated as destructive.
+        /// </summary>
+        public static bool IsMutationTool(string toolName) {
             foreach (var prefix in s_mutationPrefixes) {
                 if (toolName.StartsWith(prefix, StringComparison.Ordinal))
                     return true;

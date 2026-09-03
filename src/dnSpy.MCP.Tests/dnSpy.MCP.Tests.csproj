@@ -24,6 +24,8 @@
          BufferedLineReader) and internal helpers exposed via InternalsVisibleTo
          in the main project (AssemblyInfo). -->
     <ProjectReference Include="..\dnSpy.MCP\dnSpy.MCP.csproj" />
+    <ProjectReference Include="..\dnSpy.MCP.Core\dnSpy.MCP.Core.csproj" />
+    <ProjectReference Include="..\dnSpy.MCP.Headless\dnSpy.MCP.Headless.csproj" />
   </ItemGroup>
 
   <ItemGroup>
