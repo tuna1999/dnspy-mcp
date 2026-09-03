@@ -232,6 +232,10 @@ jobs:
           }
           $log | Out-File -FilePath "CHANGELOG.txt" -Encoding utf8
 
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ needs.prepare.outputs.tag }}"
