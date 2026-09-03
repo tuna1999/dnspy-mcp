@@ -23,7 +23,7 @@ conflicts). The headless binary is a standalone stdio MCP server for batch
 analysis — same tools, same decompiled output, no UI, no dnSpy install needed
 at analysis time (only the vendored decompiler DLLs in `deps/`).
 
-## Tools (36)
+## Tools (38 total · 36 in headless)
 
 ### Decompiler
 | Tool | Description |
@@ -87,19 +87,18 @@ at analysis time (only the vendored decompiler DLLs in `deps/`).
 | `get_enum_values` | Enum members with name + value (hex + decimal) |
 | `search_constants` | Search const/literal fields across assemblies |
 
-### Cross-References
-| Tool | Description |
-|------|-------------|
-| `get_xrefs_to` | Find all references to a method or field |
-| `get_callees` | Methods and fields called by a method |
-
 ### Assembly
 | Tool | Description |
 |------|-------------|
+| `load_assembly` | Load a .NET DLL/EXE by absolute path (headless/extension) |
+| `close_assembly` | Unload assemblies by simple name (case-insensitive) |
+| `list_loaded_assemblies` | All loaded binaries: filename, assembly name, MVID, type count, path |
 | `assembly_overview` | Module info, version, entry point, type count, references |
 | `assembly_list_namespaces` | All namespaces in the loaded assembly |
 | `assembly_list_types` | Type listing with optional regex filter |
 | `assembly_get_references` | Assembly references (DLLs, NuGet packages) |
+
+*`get_selected_node` and `refresh_u_i` (UI & Navigation below) exist only in the dnSpy extension — headless serves the other 36.*
 
 ### Resources & Metadata
 | Tool | Description |
