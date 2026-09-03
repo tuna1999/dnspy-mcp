@@ -131,7 +131,7 @@ dnspy_mcp/
 
 ## Architecture
 
-1: ### Three-Project Structure (B3' DI-based Hybrid)
+### Three-Project Structure (B3' DI-based Hybrid)
 
 - **`dnSpy.MCP.Core`** (lib, net10.0, no WPF): pure analysis library with 5 abstraction interfaces, `McpContext` composition root, 13 instance tool classes, `ToolRegistry` reflection discovery, `McpServerHost` TCP transport.
 - **`dnSpy.MCP`** (Extension, net10.0-windows, WPF): MEF entry, composes `McpContext` with dnSpy-backed adapters, references Core. Hosts the in-dnSpy MCP server.
@@ -140,14 +140,6 @@ dnspy_mcp/
 ### Why TcpListener Instead of MCP SDK in Extension?
 
 The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: Extension uses a minimal custom transport over `System.Net.Sockets.TcpListener` (see `McpServerHost` / `BufferedLineReader`). Headless uses MCP SDK's stdio transport (no conflict because it runs in its own process).
-2:   → OnEvent(ExtensionEvent.AppLoaded):
-      - Resolve IDocumentTreeView + IDocumentTabService via IServiceLocator
-      - TreeViewTools.Initialize(treeView, tabService)
-      - Create Output Pane lazily
-  → User clicks Start (or AutoStart=true in Settings):
-      - Compose McpContext with 5 dnSpy-backed adapters (DnSpyAssemblyLoader, DnSpyDecompilerSourceProvider via DecompilerService.Decompiler, WpfUIThreadScheduler, DnSpyLogSink, DnSpyTreeRefreshNotifier)
-      - Build ToolRegistry(ctx, Core assembly + Extension assembly)
-      - McpServerHost(Settings, registry) → TcpListener server starts
 
 ### Extension Lifecycle
 
@@ -155,16 +147,7 @@ The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflic
 dnSpy starts
   → MEF discovers dnSpy.MCP.x.dll
   → TheExtension constructor: [Import] gets services
-1: ### Three-Project Structure (B3' DI-based Hybrid)
-
-- **`dnSpy.MCP.Core`** (lib, net10.0, no WPF): pure analysis library with 5 abstraction interfaces, `McpContext` composition root, 13 instance tool classes, `ToolRegistry` reflection discovery, `McpServerHost` TCP transport.
-- **`dnSpy.MCP`** (Extension, net10.0-windows, WPF): MEF entry, composes `McpContext` with dnSpy-backed adapters, references Core. Hosts the in-dnSpy MCP server.
-- **`dnSpy.MCP.Headless`** (Exe, net10.0-windows, no WPF): standalone stdio MCP server for batch analysis. Uses MCP SDK + dnSpy decompiler DLLs via reflection (`IDecompilerProvider`).
-
-### Why TcpListener Instead of MCP SDK in Extension?
-
-The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: Extension uses a minimal custom transport over `System.Net.Sockets.TcpListener` (see `McpServerHost` / `BufferedLineReader`). Headless uses MCP SDK's stdio transport (no conflict because it runs in its own process).
-2:   → OnEvent(ExtensionEvent.AppLoaded):
+  → OnEvent(ExtensionEvent.AppLoaded):
       - Resolve IDocumentTreeView + IDocumentTabService via IServiceLocator
       - TreeViewTools.Initialize(treeView, tabService)
       - Create Output Pane lazily
