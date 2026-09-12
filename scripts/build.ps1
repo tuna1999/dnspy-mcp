@@ -172,6 +172,7 @@ if ($Deploy) {
     Copy-Item "$BinDir\dnSpy.MCP.x.dll" $DeployDir -Force
     Copy-Item "$BinDir\dnSpy.MCP.x.pdb" $DeployDir -Force -ErrorAction SilentlyContinue
     Copy-Item "$BinDir\dnSpy.MCP.x.deps.json" $DeployDir -Force -ErrorAction SilentlyContinue
+    Copy-Item "$BinDir\dnSpy.MCP.Core.dll" $DeployDir -Force
 
     # Verify
     $dll = Get-Item (Join-Path $DeployDir "dnSpy.MCP.x.dll") -ErrorAction SilentlyContinue
