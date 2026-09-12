@@ -47,16 +47,18 @@ namespace dnSpy.MCP {
                 return;
             }
             var running = ext.IsServerRunning ? "Running" : "Stopped";
-            McpLogger.Info($"MCP Server: {running}, Port: {ext.ServerPort}");
+            ext.WriteToPane($"MCP Server: {running}, Port: {ext.ServerPort}");
         }
     }
 
     [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Show Log", Group = McpMenuConstants.GROUP_MCP1, Order = 20)]
     sealed class ShowLogCommand : MenuItemBase {
         public override void Execute(IMenuItemContext context) {
-            // GetRecent returns the most recent log lines; join for display.
+            var ext = TheExtension.Instance;
+            if (ext == null) return;
             var lines = McpLogger.GetRecent();
-            McpLogger.Info(string.Join(Environment.NewLine, lines));
+            foreach (var line in lines)
+                ext.WriteToPane(line);
         }
 
         public override bool IsVisible(IMenuItemContext context) {

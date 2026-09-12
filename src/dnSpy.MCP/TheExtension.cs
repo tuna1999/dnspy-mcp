@@ -144,6 +144,12 @@ namespace dnSpy.MCP {
             _serverHost?.Stop();
         }
 
+        public void WriteToPane(string message) {
+            McpLogger.Info(message);
+            EnsureOutputPane();
+            _outputPane?.WriteLine(dnSpy.Contracts.Text.BoxedTextColor.DebugLogExtensionMessage, message);
+        }
+
         public bool IsServerRunning => _serverHost?.IsRunning ?? false;
         public int ServerPort => Settings?.Port ?? 0;
     }

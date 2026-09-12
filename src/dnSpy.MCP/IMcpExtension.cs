@@ -16,5 +16,8 @@ namespace dnSpy.MCP {
 
         /// <summary>Stop the running server, if any. Safe to call when stopped.</summary>
         void StopServer();
+
+        /// <summary>Write a line to the "MCP Server" Output Pane (visible in dnSpy UI).</summary>
+        void WriteToPane(string message);
     }
 }
