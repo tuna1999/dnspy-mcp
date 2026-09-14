@@ -1,6 +1,18 @@
 # dnSpy MCP Server
 
-MCP (Model Context Protocol) server extension for [dnSpy](https://github.com/dnSpyEx/dnSpy), enabling AI agents to decompile and analyze .NET assemblies directly through dnSpy.
+[![Build](https://github.com/your-repo/dnspy_mcp/actions/workflows/build.yml/badge.svg)](../../actions)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [dnSpy](https://github.com/dnSpyEx/dnSpy) — the .NET debugger and assembly editor — enabling AI agents to decompile, analyze, search, and patch .NET assemblies directly through dnSpy's engine.
+
+## Highlights
+
+- **38 MCP tools** — decompilation, IL analysis, cross-references, search, resource inspection, renaming, and IL patching
+- **Byte-identical decompiler output** — powered by the same `ICSharpCode.Decompiler` pipeline dnSpy.exe uses
+- **Two hosts, one core** — run as a dnSpy extension (HTTP) or a standalone headless exe (stdio); identical tools and output
+- **Zero-drag transport** — the extension uses a minimal `TcpListener`-based HTTP transport, avoiding version conflicts with dnSpy's runtime
+- **Hardened by default** — loopback bind, constant-time token auth, concurrency caps, request-size limits, per-tool timeouts, serialized mutations
+- **Batch-ready** — parallel JSON-RPC batch processing for high-throughput analysis pipelines
 
 ## How It Works
 
@@ -18,10 +30,8 @@ Two hosts share one tool core (`dnSpy.MCP.Core`):
                           output identical to dnSpy.exe)
 ```
 
-The extension runs inside dnSpy using a minimal custom transport over
-`System.Net.Sockets.TcpListener` (no ASP.NET Core, MCP SDK, or external dependencies). The headless binary is a standalone stdio MCP server for batch
-analysis — same tools, same decompiled output, no UI, no dnSpy install needed
-at analysis time (only the vendored decompiler DLLs in `deps/`).
+- **Extension** — runs inside dnSpy with full UI integration (tree view, tabs, Output pane). Started manually from the **MCP Server** menu so WPF is fully initialized before any tool call touches the UI thread.
+- **Headless** — standalone stdio MCP server for batch analysis: same tools, same decompiled output, no UI, no dnSpy install required at analysis time (only the vendored decompiler DLLs in `deps/`).
 
 ## Tools (38 total · 36 in headless)
 
@@ -50,42 +60,11 @@ at analysis time (only the vendored decompiler DLLs in `deps/`).
 | `get_il_opcodes_formatted` | Formatted IL opcodes with offsets and line indices |
 | `update_method_body` | Patch a method body using C# statements (dry-run supported) |
 
-### UI & Navigation
+### Cross-References
 | Tool | Description |
 |------|-------------|
-| `get_selected_node` | Get the currently selected node in dnSpy tree view |
-| `refresh_ui` | Refresh tree view UI after metadata changes |
-
-### Rename
-| Tool | Description |
-|------|-------------|
-| `rename_namespace` | Rename a namespace across matching types (dry-run supported) |
-| `rename_class` | Rename one class in an assembly+namespace (dry-run supported) |
-| `rename_method` | Rename methods by exact or partial match (dry-run supported) |
-
-### Namespace
-| Tool | Description |
-|------|-------------|
-| `get_global_namespaces` | List all types in the global namespace |
-
-### Type Inspection
-| Tool | Description |
-|------|-------------|
-| `get_type_members` | List all members of a type with optional filter |
-| `get_fields` | Detailed field info: type, access, static/const, values |
-| `get_properties` | Property details: getter/setter, type, access |
-
-### Custom Attributes
-| Tool | Description |
-|------|-------------|
-| `get_attributes` | Attributes on assembly/type/method/field with filter |
-| `get_method_attributes` | Shortcut: attributes on a specific method |
-
-### Constants & Enums
-| Tool | Description |
-|------|-------------|
-| `get_enum_values` | Enum members with name + value (hex + decimal) |
-| `search_constants` | Search const/literal fields across assemblies |
+| `get_xrefs_to` | Find all references to a method or field |
+| `get_callees` | Methods and fields called by a method |
 
 ### Assembly
 | Tool | Description |
@@ -104,6 +83,48 @@ at analysis time (only the vendored decompiler DLLs in `deps/`).
 | `get_resources` | List embedded resources |
 | `get_resource_data` | Raw bytes of a specific resource |
 | `get_metadata` | PE headers, MVID, runtime version, sections |
+
+### Type Inspection
+| Tool | Description |
+|------|-------------|
+| `get_type_members` | List all members of a type with optional filter |
+| `get_fields` | Detailed field info: type, access, static/const, values |
+| `get_properties` | Property details: getter/setter, type, access |
+| `get_type_hierarchy` | Inheritance chain, interfaces, member counts |
+
+### Custom Attributes
+| Tool | Description |
+|------|-------------|
+| `get_attributes` | Attributes on assembly/type/method/field with filter |
+| `get_method_attributes` | Shortcut: attributes on a specific method |
+
+### Constants & Enums
+| Tool | Description |
+|------|-------------|
+| `get_enum_values` | Enum members with name + value (hex + decimal) |
+| `search_constants` | Search const/literal fields across assemblies |
+| `get_global_namespaces` | List all types in the global namespace |
+
+### UI & Navigation *(Extension only)*
+| Tool | Description |
+|------|-------------|
+| `get_selected_node` | Get the currently selected node in dnSpy tree view |
+| `refresh_ui` | Refresh tree view UI after metadata changes |
+
+### Rename
+| Tool | Description |
+|------|-------------|
+| `rename_namespace` | Rename a namespace across matching types (dry-run supported) |
+| `rename_class` | Rename one class in an assembly+namespace (dry-run supported) |
+| `rename_method` | Rename methods by exact or partial match (dry-run supported) |
+
+### Tips
+
+- **Multiple assemblies?** Call `list_loaded_assemblies` first; search tools accept an optional `assembly` parameter to scope results.
+- **Method identifiers** — all method-accepting tools resolve hex tokens, plain tokens, full names, then short names via one shared resolver. Prefer full names (`Namespace.Class::Method`) to avoid ambiguity.
+- **Mutating tools** (`rename_*`, `update_method_body`) are dry-run by default — pass the explicit confirm flag to apply.
+
+## Getting Started
 
 ### Prerequisites
 
@@ -132,6 +153,7 @@ dotnet build -p:DnSpyBin="D:\path\to\dnSpy\bin"
 ```
 
 ### Build & Deploy
+
 ```powershell
 # 1) Build only (Release default)
 pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy"
@@ -149,17 +171,16 @@ pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Deploy -DeployDir "D:\tools\
 pwsh scripts/build.ps1 -DnSpyPath "D:\tools\dnSpy" -Configuration Debug -Deploy
 ```
 
-The script syncs `deps/` from the dnSpy install, builds the solution, and
-deploys the extension. **dnSpy must be closed** before `-Deploy`.
+The script syncs `deps/` from the dnSpy install, builds the solution, and deploys the extension. **dnSpy must be closed** before `-Deploy`.
 
-Options:
-```powershell
-pwsh scripts/build.ps1 -DnSpyPath "<path>"    # Required: dnSpy folder (DLLs from its bin\)
-pwsh scripts/build.ps1 ... -Clean             # Clean before build
-pwsh scripts/build.ps1 ... -Deploy            # Deploy after build
-pwsh scripts/build.ps1 ... -DeployDir "<path>" # Custom deploy target (used with -Deploy)
-pwsh scripts/build.ps1 ... -Configuration Debug   # Build Debug instead of Release
-```
+| Option | Effect |
+|--------|--------|
+| `-DnSpyPath "<path>"` | Required: dnSpy folder (DLLs synced from its `bin\`) |
+| `-Clean` | Clean before build |
+| `-Deploy` | Deploy after build |
+| `-DeployDir "<path>"` | Custom deploy target (used with `-Deploy`) |
+| `-Configuration Debug` | Build Debug instead of Release |
+| `-PublishHeadless` | Publish the headless exe bundle |
 
 ### Build output paths
 
@@ -169,21 +190,24 @@ pwsh scripts/build.ps1 ... -Configuration Debug   # Build Debug instead of Relea
 - Runtime deploy (custom `-DeployDir`): `<DeployDir>/dnSpy.MCP.x.dll`
 
 Only these files should be copied to dnSpy's `Extensions` folder:
+
 - `dnSpy.MCP.x.dll`
+- `dnSpy.MCP.Core.dll` (**required** — hard dependency of `dnSpy.MCP.x.dll`; without it dnSpy silently fails to load the extension)
 - `dnSpy.MCP.x.deps.json`
 - `dnSpy.MCP.x.pdb` (optional for debugging)
+- `dnSpy.MCP.Core.pdb` (optional for debugging)
 
 Do not copy the whole `build/Extensions` folder recursively into dnSpy (avoid nested `Extensions/Extensions/` and stale dependency files).
 
-### Usage
+> **Troubleshooting**: if the extension loaded before but breaks after swapping DLL versions, delete dnSpy's cached MEF composition at `%LOCALAPPDATA%\dnSpy\Startup64\net\dnSpy-mef-info.bin` and restart dnSpy. The cache is keyed by extension DLL identity (path + timestamp + size + MVID); replacing a *dependency* (e.g. `dnSpy.MCP.Core.dll`) does not invalidate it.
+
+### Usage (Extension)
 
 1. Start `dnSpy.exe`
 2. Open a .NET assembly (.exe/.dll)
 3. Menu → **MCP Server** → **Start**
 4. Open **View → Output** (Alt+2) → select **MCP Server** to see logs
 5. Connect from an AI agent via `http://127.0.0.1:5150/`
-
-### Menu Options
 
 | Menu Item | Action |
 |-----------|--------|
@@ -192,6 +216,9 @@ Do not copy the whole `build/Extensions` folder recursively into dnSpy (avoid ne
 | **Status** | Show running/stopped state and port |
 | **Show Log** | Display recent log entries |
 | **Clear Log** | Clear log file and output window |
+
+## Project Structure
+
 ```
 dnspy_mcp/
 ├── src/
@@ -204,7 +231,7 @@ dnspy_mcp/
 │   │   └── Tools/             # 13 instance tool classes ([Description] methods)
 │   ├── dnSpy.MCP/             # Extension (net10.0-windows, WPF, MEF) — HTTP transport
 │   │   ├── Adapters/          # dnSpy-backed adapter implementations
-│   │   ├── Tools/TreeViewTools.cs  # 2 UI-only tools (get_selected_node, refresh_u_i)
+│   │   ├── Tools/TreeViewTools.cs  # 2 UI-only tools (get_selected_node, refresh_ui)
 │   │   └── TheExtension.cs    # MEF entry, composes McpContext
 │   ├── dnSpy.MCP.Headless/    # Standalone exe (stdio MCP transport via MCP SDK)
 │   │   ├── Program.cs         # Host + fail-fast startup + stdio server
@@ -220,9 +247,7 @@ dnspy_mcp/
 
 ## Headless Mode
 
-For batch analysis without dnSpy running: same 36 tools, decompiler output
-byte-identical to dnSpy.exe, stdio transport (Claude Desktop / Cursor /
-VS Code can auto-spawn it).
+For batch analysis without dnSpy running: same 36 tools, decompiler output byte-identical to dnSpy.exe, stdio transport (Claude Desktop / Cursor / VS Code can auto-spawn it).
 
 ```powershell
 # Build & publish
@@ -238,8 +263,7 @@ dotnet publish\headless\dnspy-mcp-headless.dll --load "path\to\*.dll"
 - `--load, -l <path>` — pre-load assemblies (repeatable, supports `*`/`?` globs)
 - `--config, -c <json>` — reserved, currently unused
 - Logging goes to **stderr only** (stdout carries the MCP JSON-RPC frames)
-- Parallel mutation calls (`rename_*`, `update_method_body`) are serialized via
-  a shared lock, mirroring the Extension transport
+- Parallel mutation calls (`rename_*`, `update_method_body`) are serialized via a shared lock, mirroring the Extension transport
 
 Client config (stdio):
 
@@ -257,63 +281,36 @@ Client config (stdio):
 }
 ```
 
-## Adding New Tools
-
-Tools are discovered at runtime via reflection. To add a new tool:
-
-1. Create a `public sealed` class in `src/dnSpy.MCP.Core/Tools/` under the
-   `dnSpy.MCP.Core.Tools` namespace, with a constructor taking `McpContext`
-2. Add instance methods `public string MyTool(...)` with a `[Description("...")]` attribute
-3. Parameters use `[Description("...")]` for documentation
-
-```csharp
-using System.ComponentModel;
-using dnSpy.MCP.Core.Mcp;
-
-namespace dnSpy.MCP.Core.Tools {
-    public sealed class MyTools(McpContext ctx) {
-        [Description("Describe what this tool does")]
-        public string MyTool(
-            [Description("Parameter description")] string param1) {
-            // Access loaded modules via the abstraction — works in both
-            // Extension (dnSpy) and Headless (dnlib) hosts
-            var docs = ctx.AssemblyLoader.GetDocuments();
-            return $"Result: {param1} ({docs.Count} assemblies loaded)";
-        }
-    }
-}
-```
-
-Method names are automatically converted to `snake_case` for the MCP protocol (e.g., `MyTool` → `my_tool`).
-
 ## Configuration
 
 Defaults live in `src/dnSpy.MCP/Settings/McpSettings.cs` and are editable in dnSpy via **Options → MCP Server**:
-- **Host**: `127.0.0.1` (loopback only by default; `0.0.0.0` binds all interfaces)
-- **Port**: `5150`
-- **AutoStart**: start the server when dnSpy launches (off)
-- **RequireAuth / ApiToken**: require `Authorization: Bearer <token>` (off by default)
-- **AllowedOrigins**: CORS origins allowed to call the server (empty = CORS disabled)
-- **MaxConcurrency**: `4` simultaneous in-flight requests
-- **MaxRequestSizeMB**: `1` MB request body cap
-- **ToolTimeoutSeconds**: `30`s per tool call
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Host | `127.0.0.1` | Loopback only by default; `0.0.0.0` binds all interfaces |
+| Port | `5150` | TCP port for the HTTP transport |
+| AutoStart | off | Start the server when dnSpy launches |
+| RequireAuth / ApiToken | off | Require `Authorization: Bearer <token>` on every request |
+| AllowedOrigins | empty | CORS origins allowed to call the server (empty = CORS disabled) |
+| MaxConcurrency | `4` | Max simultaneous in-flight requests |
+| MaxRequestSizeMB | `1` | Request body cap |
+| ToolTimeoutSeconds | `30` | Per-tool-call timeout (in-flight work is cancelled on expiry) |
+
+## Security
+
+- **Loopback by default** — the server binds `127.0.0.1`; binding `0.0.0.0` exposes it to the network, so pair it with `RequireAuth`.
+- **Auth fail-closed** — if `RequireAuth` is on but the token is empty, the server refuses to start. Tokens are compared in constant time (`CryptographicOperations.FixedTimeEquals`).
+- **Mutation serialization** — destructive tools (`rename_*`, `update_method_body`) run under an exclusive lock so parallel batch requests can't race on dnlib metadata.
+- **Roslyn sandbox** — IL patch compilation references only 5 core BCL assemblies plus the target assembly.
+- **Cancellation** — per-tool timeouts cancel the actual decompilation work, not just the HTTP response.
 
 ## Logging
 
 Logs are written to three destinations:
+
 - **File**: `mcp-server.log` in the dnSpy `bin` folder (rotates at 5 MB, keeps 3 backups)
 - **In-memory**: Viewable via MCP Server → Show Log
 - **Output Window**: View → Output → MCP Server (in dnSpy)
-
-## Architecture Notes
-
-### Why a custom TcpListener transport instead of MCP SDK?
-
-The official MCP SDK (`ModelContextProtocol` 1.2.0) pulls `Microsoft.Extensions.*` 10.x dependencies that conflict with the versions dnSpy ships on its .NET runtime. This is a hard version conflict that cannot be resolved with binding redirects. The solution is a minimal custom HTTP transport over `System.Net.Sockets.TcpListener`.
-
-### Standalone Build
-
-The project references pre-built DLLs from `deps/`, enabling fast iteration without cloning the full dnSpy source. For integrated builds as part of dnSpy.sln, clone [dnSpyEx](https://github.com/dnSpyEx/dnSpy) and copy `src/dnSpy.MCP/` into `Extensions/`.
 
 ## Connecting AI Agents
 
@@ -365,6 +362,7 @@ claude mcp add --transport http dnspy --scope user http://127.0.0.1:5150
 ```
 
 Other useful commands:
+
 ```bash
 claude mcp list          # list all configured servers
 claude mcp get dnspy     # show config for a server
@@ -382,20 +380,52 @@ claude mcp remove dnspy  # remove a server
 
 1. Start dnSpy and open an assembly
 2. Menu → **MCP Server** → **Start**
-3. In your AI agent, verify the connection:
-
-```
-You should see 38 MCP tools available:
-- decompile_method
-- decompile_type
-- search_types
-- grep
-- get_xrefs_to
-- assembly_overview
-- ...and more
-```
+3. Check `GET http://127.0.0.1:5150/health` returns status and tool count, or list tools from your agent — you should see 38 MCP tools (`decompile_method`, `search_types`, `grep`, `get_xrefs_to`, `assembly_overview`, …)
 
 If the agent does not auto-discover the tools, tell it: "Use the dnSpy MCP server at `http://127.0.0.1:5150/` to access decompilation and analysis tools."
+
+## Adding New Tools
+
+Tools are discovered at runtime via reflection. To add a new tool:
+
+1. Create a `public sealed` class in `src/dnSpy.MCP.Core/Tools/` under the `dnSpy.MCP.Core.Tools` namespace, with a constructor taking `McpContext`
+2. Add instance methods `public string MyTool(...)` with a `[Description("...")]` attribute
+3. Parameters use `[Description("...")]` for documentation
+4. Run `pwsh scripts/verify-tool-count.ps1` to keep docs and code in sync
+
+```csharp
+using System.ComponentModel;
+using dnSpy.MCP.Core.Mcp;
+
+namespace dnSpy.MCP.Core.Tools {
+    public sealed class MyTools(McpContext ctx) {
+        [Description("Describe what this tool does")]
+        public string MyTool(
+            [Description("Parameter description")] string param1) {
+            // Access loaded modules via the abstraction — works in both
+            // Extension (dnSpy) and Headless (dnlib) hosts
+            var docs = ctx.AssemblyLoader.GetDocuments();
+            return $"Result: {param1} ({docs.Count} assemblies loaded)";
+        }
+    }
+}
+```
+
+Method names are automatically converted to `snake_case` for the MCP protocol (e.g., `MyTool` → `my_tool`).
+
+## Architecture Notes
+
+### Why a custom TcpListener transport instead of MCP SDK?
+
+The official MCP SDK (`ModelContextProtocol` 1.2.0) pulls `Microsoft.Extensions.*` 10.x dependencies that conflict with the versions dnSpy ships on its .NET runtime. This is a hard version conflict that cannot be resolved with binding redirects. The solution is a minimal custom HTTP transport over `System.Net.Sockets.TcpListener`. The headless exe runs in its own process, so it uses the MCP SDK's stdio transport without conflict.
+
+### Standalone build
+
+The project references pre-built DLLs from `deps/`, enabling fast iteration without cloning the full dnSpy source. For integrated builds as part of dnSpy.sln, clone [dnSpyEx](https://github.com/dnSpyEx/dnSpy) and copy `src/dnSpy.MCP/` into `Extensions/`.
+
+### Thread safety
+
+MCP tools run on background threads. All WPF TreeView/UI access marshals to the UI thread via the `IUIThreadScheduler` abstraction (`Dispatcher.Invoke` in the Extension). Metadata mutation tools auto-refresh the tree view after changes.
 
 ## Skills
 

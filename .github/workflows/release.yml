@@ -158,9 +158,22 @@ jobs:
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
           Copy-Item "src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll" $outDir
           Copy-Item "src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.deps.json" $outDir
+          # dnSpy.MCP.Core.dll is a hard runtime dependency of dnSpy.MCP.x.dll — without it
+          # dnSpy silently fails to compose the extension (issue #2). Must ship in the zip.
+          Copy-Item "src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.Core.dll" $outDir
+          Copy-Item "src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.Core.pdb" $outDir
 
-          Compress-Archive -Path "$outDir/*" -DestinationPath "dnSpy.MCP.x-${{ matrix.arch }}.zip" -Force
-          Write-Host "Packaged: dnSpy.MCP.x-${{ matrix.arch }}.zip"
+          # Packaging guard: the release zip MUST contain both assemblies (same-build pair).
+          $zipName = "dnSpy.MCP.x-${{ matrix.arch }}.zip"
+          Compress-Archive -Path "$outDir/*" -DestinationPath $zipName -Force
+          $zipContents = (Expand-Archive -Path $zipName -DestinationPath "$outDir\verify" -Force -PassThru | ForEach-Object Name)
+          foreach ($required in "dnSpy.MCP.x.dll", "dnSpy.MCP.Core.dll") {
+            if ($zipContents -notcontains $required) {
+              Write-Host "##[error]Release zip is missing required file: $required"
+              exit 1
+            }
+          }
+          Write-Host "Packaged: $zipName ($($zipContents -join ', '))"
 
       - name: Package headless (x64 leg only — AnyCPU bundle)
         if: matrix.arch == 'x64'
@@ -246,11 +259,8 @@ jobs:
           ### Changes
           $changelog
 
-          ### Installation
           1. Download the zip matching your dnSpy version:
-             - ``dnSpy.MCP.x-x64.zip`` for dnSpy **64-bit**
-             - ``dnSpy.MCP.x-x86.zip`` for dnSpy **32-bit**
-          2. Extract to ``<dnSpy>/bin/Extensions/``
+          2. Extract BOTH ``dnSpy.MCP.x.dll`` and ``dnSpy.MCP.Core.dll`` to ``<dnSpy>/bin/Extensions/``
           3. Restart dnSpy
           4. Start MCP Server from the Tools menu
 

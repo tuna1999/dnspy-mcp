@@ -193,6 +193,64 @@ public class HeadlessE2ETests {
         text.Should().Contain("TestMethod", "the type must actually decompile");
     }
 
+    private static string ToolText(JsonNode resp) =>
+        string.Join("\n", resp["result"]!["content"]!.AsArray()
+            .Select(c => c!["text"]?.GetValue<string>() ?? ""));
+
+    /// <summary>
+    /// PR #1 regression: load_assembly must register the document via TryGetOrCreate
+    /// (not CreateDocument) so list/search see it, and close→load must be repeatable.
+    /// Covers the exact workflow: load → list → search_types → search_strings →
+    /// close → load again.
+    /// </summary>
+    [Fact]
+    public async Task Assembly_workflow_load_list_search_close_reload() {
+        var fixture = Path.Combine(AppContext.BaseDirectory, "SampleLibrary.dll");
+
+        using var hp = new HeadlessProcess();
+        await InitializeAsync(hp);
+        await hp.NotifyAsync("notifications/initialized");
+
+        // 1. load_assembly
+        var load = await hp.RequestAsync(2, "tools/call",
+            $"{{\"name\":\"load_assembly\",\"arguments\":{{\"path\":\"{fixture.Replace("\\", "\\\\")}\"}}}}");
+        load["error"].Should().BeNull();
+        ToolText(load).Should().Contain("SampleLibrary", "load_assembly must report the loaded assembly");
+
+        // 2. list_loaded_assemblies sees it
+        var list1 = await hp.RequestAsync(3, "tools/call",
+            "{\"name\":\"list_loaded_assemblies\",\"arguments\":{}}");
+        ToolText(list1).Should().Contain("SampleLibrary", "loaded assembly must be listed");
+
+        // 3. search_types finds fixture types
+        var types = await hp.RequestAsync(4, "tools/call",
+            "{\"name\":\"search_types\",\"arguments\":{\"pattern\":\"TestClass\"}}");
+        types["error"].Should().BeNull();
+        ToolText(types).Should().Contain("TestNS.TestClass");
+
+        // 4. search_strings executes against the loaded module
+        var strings = await hp.RequestAsync(5, "tools/call",
+            "{\"name\":\"search_strings\",\"arguments\":{}}");
+        strings["error"].Should().BeNull("search_strings must not return a protocol error");
+
+        // 5. close_assembly removes it
+        var close = await hp.RequestAsync(6, "tools/call",
+            "{\"name\":\"close_assembly\",\"arguments\":{\"assemblyName\":\"SampleLibrary\"}}");
+        ToolText(close).Should().Contain("1", "exactly one document must be removed");
+        var list2 = await hp.RequestAsync(7, "tools/call",
+            "{\"name\":\"list_loaded_assemblies\",\"arguments\":{}}");
+        list2["error"].Should().BeNull();
+
+        // 6. load again — PR #1: reload after close must re-register cleanly
+        var reload = await hp.RequestAsync(8, "tools/call",
+            $"{{\"name\":\"load_assembly\",\"arguments\":{{\"path\":\"{fixture.Replace("\\", "\\\\")}\"}}}}");
+        reload["error"].Should().BeNull();
+        ToolText(reload).Should().Contain("SampleLibrary", "reload after close must succeed");
+        var list3 = await hp.RequestAsync(9, "tools/call",
+            "{\"name\":\"list_loaded_assemblies\",\"arguments\":{}}");
+        ToolText(list3).Should().Contain("SampleLibrary", "reloaded assembly must be listed again");
+    }
+
     [Fact]
     public async Task Single_unknown_string_arg_maps_to_missing_required_param() {
         // Agents invent synonyms ("query" for the declared "pattern", "typeName"

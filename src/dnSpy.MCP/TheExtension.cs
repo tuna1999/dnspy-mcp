@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
+using System.Windows;
 using System.Threading.Tasks;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Documents;
@@ -14,7 +15,6 @@ using dnSpy.MCP.Core.Adapters;
 using dnSpy.MCP.Core.Mcp;
 using dnSpy.MCP.Settings;
 using dnSpy.MCP.Tools;
-using Microsoft.VisualStudio.Composition;
 
 namespace dnSpy.MCP {
     [ExportExtension]
@@ -31,19 +31,24 @@ namespace dnSpy.MCP {
         private McpServerHost? _serverHost;
         private IOutputTextPane? _outputPane;
 
-        [Import]
+        // All imports are optional (AllowDefault): a missing export on some dnSpy build must
+        // degrade the corresponding feature, never reject the whole extension part. MEF
+        // ignores NRT annotations — without AllowDefault a nullable property is still a
+        // REQUIRED import and VS-MEF silently drops TheExtension from the catalog.
+        // StartServer() reports missing required services explicitly.
+        [Import(AllowDefault = true)]
         public IDsDocumentService? DocumentService { get; set; }
 
-        [Import]
+        [Import(AllowDefault = true)]
         public IDecompilerService? DecompilerService { get; set; }
 
-        [Import]
+        [Import(AllowDefault = true)]
         public IOutputService? OutputService { get; set; }
 
-        [Import]
+        [Import(AllowDefault = true)]
         public IServiceLocator? ServiceLocator { get; set; }
 
-        [Import]
+        [Import(AllowDefault = true)]
         public McpSettings? Settings { get; set; }
 
         public ExtensionInfo ExtensionInfo => new ExtensionInfo {
@@ -59,6 +64,10 @@ namespace dnSpy.MCP {
                 case ExtensionEvent.AppLoaded:
                     Instance = this;
                     EnsureOutputPane();
+                    // Mirror every McpLogger line (server lifecycle, tool calls, errors)
+                    // into the Output Pane — v1.6.2 behavior, restored host-agnostically:
+                    // Core emits LineLogged, only the UI-owning host subscribes.
+                    McpLogger.LineLogged += OnLogLine;
                     // Populate TreeViewTools' static refs so the Extension-only UI tools
                     // (get_selected_node, refresh_u_i) and the namespace rename helper can
                     // reach the WPF TreeView without going through DnSpyContext.
@@ -73,6 +82,7 @@ namespace dnSpy.MCP {
                     break;
 
                 case ExtensionEvent.AppExit:
+                    McpLogger.LineLogged -= OnLogLine;
                     _serverHost?.Dispose();
                     break;
             }
@@ -89,6 +99,28 @@ namespace dnSpy.MCP {
             }
         }
 
+        /// <summary>
+        /// McpLogger.LineLogged handler: renders a recorded line to the Output Pane.
+        /// May fire from any thread (server/tools run on background threads) — marshal
+        /// to the WPF UI thread before touching the pane. Never throws into the logger.
+        /// </summary>
+        void OnLogLine(McpLogger.Level level, string line) {
+            var pane = _outputPane;
+            if (pane is null) return;
+            var color = level switch {
+                McpLogger.Level.Warn => dnSpy.Contracts.Text.BoxedTextColor.DebugLogStepFiltering,
+                McpLogger.Level.Error => dnSpy.Contracts.Text.BoxedTextColor.DebugLogExceptionUnhandled,
+                _ => dnSpy.Contracts.Text.BoxedTextColor.DebugLogExtensionMessage
+            };
+            void Write() {
+                try { pane.WriteLine(color, line); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"MCP [OUTPUT ERROR]: {ex.Message}"); }
+            }
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess()) Write();
+            else dispatcher.InvokeAsync(Write);
+        }
+
         void LogServiceLocatorStatus(IDocumentTreeView? treeView, IDocumentTabService? tabService) {
             var sl = ServiceLocator;
             McpLogger.Info($"ServiceLocator: {(sl != null ? "available" : "null")}");
@@ -99,6 +131,11 @@ namespace dnSpy.MCP {
         public void StartServer() {
             if (_serverHost != null && _serverHost.IsRunning)
                 return;
+
+            // Replace-and-dispose a previously stopped host so its CancellationTokenSource
+            // and listener state are released across stop/start cycles.
+            _serverHost?.Dispose();
+            _serverHost = null;
 
             var errors = new List<string>();
             if (DocumentService == null) errors.Add("DocumentService is null");
@@ -124,7 +161,7 @@ namespace dnSpy.MCP {
                 new DnSpyAssemblyLoader(DocumentService!, uiScheduler),
                 new DnSpyDecompilerSourceProvider(DecompilerService!.Decompiler),
                 uiScheduler,
-                new DnSpyLogSink(uiScheduler, _outputPane),
+                new DnSpyLogSink(),
                 new DnSpyTreeRefreshNotifier(treeView, tabService, DocumentService, uiScheduler));
             // Core assembly holds the 36 instance tools; the Extension assembly holds
             // Extension-only static tools (TreeViewTools: get_selected_node, refresh_u_i).
@@ -142,6 +179,31 @@ namespace dnSpy.MCP {
 
         public void StopServer() {
             _serverHost?.Stop();
+        }
+
+        /// <summary>
+        /// Renders a line to the "MCP Server" Output Pane (visible in the dnSpy UI).
+        /// Rendering only — this MUST NOT call <see cref="McpLogger"/>: re-logging rendered
+        /// lines feeds GetRecent() output back into the log (duplicate entries, unbounded
+        /// file growth, legitimate history eviction). Log events belong to callers;
+        /// this method is the UI side of "display", not "record".
+        /// </summary>
+        public void WriteToOutputPane(string message) {
+            EnsureOutputPane();
+            _outputPane?.WriteLine(dnSpy.Contracts.Text.BoxedTextColor.DebugLogExtensionMessage, message);
+        }
+
+        /// <summary>Clears the Output Pane (paired with the "Clear Log" menu item,
+        /// matching v1.6.2 behavior where ClearLog also cleared the pane).</summary>
+        public void ClearOutputPane() {
+            try {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher is null || dispatcher.CheckAccess()) _outputPane?.Clear();
+                else dispatcher.InvokeAsync(() => _outputPane?.Clear());
+            }
+            catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"MCP [OUTPUT ERROR]: {ex.Message}");
+            }
         }
 
         public bool IsServerRunning => _serverHost?.IsRunning ?? false;

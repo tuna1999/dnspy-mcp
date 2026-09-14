@@ -16,5 +16,15 @@ namespace dnSpy.MCP {
 
         /// <summary>Stop the running server, if any. Safe to call when stopped.</summary>
         void StopServer();
+
+        /// <summary>
+        /// Render a line to the "MCP Server" Output Pane (dnSpy UI). Rendering only —
+        /// never writes to <c>McpLogger</c>: displaying existing logs must not create
+        /// new log events (feedback loop).
+        /// </summary>
+        void WriteToOutputPane(string message);
+
+        /// <summary>Clear the Output Pane (paired with the "Clear Log" menu item).</summary>
+        void ClearOutputPane();
     }
 }

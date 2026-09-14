@@ -46,17 +46,10 @@ namespace dnSpy.MCP {
                 McpLogger.Warn("Extension not loaded");
                 return;
             }
-            var running = ext.IsServerRunning ? "Running" : "Stopped";
-            McpLogger.Info($"MCP Server: {running}, Port: {ext.ServerPort}");
-        }
-    }
-
-    [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Show Log", Group = McpMenuConstants.GROUP_MCP1, Order = 20)]
-    sealed class ShowLogCommand : MenuItemBase {
-        public override void Execute(IMenuItemContext context) {
-            // GetRecent returns the most recent log lines; join for display.
-            var lines = McpLogger.GetRecent();
-            McpLogger.Info(string.Join(Environment.NewLine, lines));
+            var status = $"MCP Server: {(ext.IsServerRunning ? "Running" : "Stopped")}, Port: {ext.ServerPort}";
+            // A status query IS a log event (record once), then rendered for visibility.
+            McpLogger.Info(status);
+            ext.WriteToOutputPane(status);
         }
 
         public override bool IsVisible(IMenuItemContext context) {
@@ -64,11 +57,30 @@ namespace dnSpy.MCP {
         }
     }
 
+    [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Show Log", Group = McpMenuConstants.GROUP_MCP1, Order = 20)]
+    sealed class ShowLogCommand : MenuItemBase {
+        public override void Execute(IMenuItemContext context) {
+            var ext = TheExtension.Instance;
+            if (ext == null) return;
+            // Rendering only. MUST NOT call McpLogger with the displayed lines:
+            // re-logging GetRecent() output feeds the log back into itself (duplicate
+            // entries, unbounded file growth, eviction of legitimate history).
+            var lines = McpLogger.GetRecent();
+            ext.WriteToOutputPane($"--- last {lines.Length} log lines ({McpLogger.LogPath}) ---");
+            foreach (var line in lines)
+                ext.WriteToOutputPane(line);
+        }
+
+        public override bool IsVisible(IMenuItemContext context) {
+            return TheExtension.Instance != null;
+        }
+    }
     [ExportMenuItem(OwnerGuid = McpMenuConstants.APP_MENU_MCP, Header = "_Clear Log", Group = McpMenuConstants.GROUP_MCP1, Order = 30)]
     sealed class ClearLogCommand : MenuItemBase {
         public override void Execute(IMenuItemContext context) {
             McpLogger.ClearLog();
             McpLogger.Info("Log cleared");
+            TheExtension.Instance?.ClearOutputPane();
         }
 
         public override bool IsVisible(IMenuItemContext context) {

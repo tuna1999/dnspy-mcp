@@ -95,9 +95,15 @@ namespace dnSpy.MCP.Core.Mcp
         {
             while (!ct.IsCancellationRequested && _running)
             {
+                // Snapshot the listener: Stop() nulls _listener after calling Stop() on it,
+                // and AcceptTcpClientAsync resumes on a threadpool thread — reading the field
+                // twice could NRE between the null check and the accept call.
+                var listener = _listener;
+                if (listener is null)
+                    break;
                 try
                 {
-                    var client = await _listener!.AcceptTcpClientAsync().WaitAsync(ct);
+                    var client = await listener.AcceptTcpClientAsync().WaitAsync(ct);
                     await _concurrency.WaitAsync(ct);
                     Interlocked.Increment(ref _activeConnections);
                     _ = Task.Run(async () => {
@@ -111,6 +117,7 @@ namespace dnSpy.MCP.Core.Mcp
                 catch (OperationCanceledException) { break; }
                 catch (SocketException) { break; }
                 catch (ObjectDisposedException) { break; }
+                catch (NullReferenceException) { break; } // listener stopped concurrently
             }
         }
 

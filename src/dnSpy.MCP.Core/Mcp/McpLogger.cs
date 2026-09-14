@@ -25,6 +25,14 @@ public static class McpLogger {
         _logPath = Path.Combine(dir, "mcp-server.log");
     }
 
+    /// <summary>
+    /// Raised for every recorded line (level + fully formatted "HH:mm:ss.fff [TAG] message"
+    /// line). Hosts that own a UI (the dnSpy Extension) subscribe to mirror the log into
+    /// their output surface; headless does not subscribe and pays nothing. Handlers must be
+    /// cheap and non-throwing — exceptions are swallowed so logging never breaks.
+    /// </summary>
+    public static event Action<Level, string>? LineLogged;
+
     public static void Log(Level level, string message) {
         var tag = level switch {
             Level.Info => "INFO",
@@ -48,6 +56,11 @@ public static class McpLogger {
         }
 
         System.Diagnostics.Debug.WriteLine($"MCP: {line}");
+
+        try { LineLogged?.Invoke(level, line); }
+        catch (Exception ex) {
+            System.Diagnostics.Debug.WriteLine($"MCP [SINK ERROR]: {ex.Message}");
+        }
     }
 
     /// <summary>Convenience wrappers around <see cref="Log(Level, string)"/>. These match

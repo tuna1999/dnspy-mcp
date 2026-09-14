@@ -150,8 +150,8 @@ if ($Deploy) {
         New-Item -ItemType Directory -Path $DeployDir -Force | Out-Null
     }
 
-    # Clean extension files in deploy dir
-    $oldExt = Get-ChildItem "$DeployDir\dnSpy.MCP.x.*" -ErrorAction SilentlyContinue
+    # Clean extension files in deploy dir (x.dll + its hard dependency Core.dll)
+    $oldExt = Get-ChildItem "$DeployDir\dnSpy.MCP.x.*", "$DeployDir\dnSpy.MCP.Core.*" -ErrorAction SilentlyContinue
     foreach ($f in $oldExt) {
         Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
     }
@@ -169,9 +169,14 @@ if ($Deploy) {
     }
 
     # Copy extension files
-    Copy-Item "$BinDir\dnSpy.MCP.x.dll" $DeployDir -Force
-    Copy-Item "$BinDir\dnSpy.MCP.x.pdb" $DeployDir -Force -ErrorAction SilentlyContinue
-    Copy-Item "$BinDir\dnSpy.MCP.x.deps.json" $DeployDir -Force -ErrorAction SilentlyContinue
+     Copy-Item "$BinDir\dnSpy.MCP.x.dll" $DeployDir -Force
+     Copy-Item "$BinDir\dnSpy.MCP.x.pdb" $DeployDir -Force -ErrorAction SilentlyContinue
+     Copy-Item "$BinDir\dnSpy.MCP.x.deps.json" $DeployDir -Force -ErrorAction SilentlyContinue
+    # Core.dll is a hard runtime dependency of dnSpy.MCP.x.dll (36 tools, McpContext,
+    # McpLogger, ToolRegistry, McpSettings). Without it dnSpy fails to compose the
+    # extension entirely (issue #2).
+    Copy-Item "$BinDir\dnSpy.MCP.Core.dll" $DeployDir -Force
+    Copy-Item "$BinDir\dnSpy.MCP.Core.pdb" $DeployDir -Force -ErrorAction SilentlyContinue
 
     # Verify
     $dll = Get-Item (Join-Path $DeployDir "dnSpy.MCP.x.dll") -ErrorAction SilentlyContinue

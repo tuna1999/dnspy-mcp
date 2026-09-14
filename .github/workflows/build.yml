@@ -189,6 +189,8 @@ jobs:
             src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.dll
             src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.deps.json
             src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.x.pdb
+            src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.Core.dll
+            src/dnSpy.MCP/bin/Release/net10.0-windows/dnSpy.MCP.Core.pdb
           retention-days: 7
 
       - name: Upload artifact (headless)
