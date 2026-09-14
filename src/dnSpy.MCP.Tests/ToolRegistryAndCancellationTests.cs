@@ -79,12 +79,12 @@ public class ToolRegistryAndCancellationTests {
     }
 
     [Fact]
-    public void ToolCallScope_token_flows_into_TaskRun() {
+    public async Task ToolCallScope_token_flows_into_TaskRun() {
         using var cts = new CancellationTokenSource();
         ToolCallScope.Set(cts.Token);
         try {
             CancellationToken seen = CancellationToken.None;
-            Task.Run(() => seen = ToolCallScope.Token).Wait(5000);
+            await Task.Run(() => seen = ToolCallScope.Token).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(cts.Token, seen);
         }
         finally {

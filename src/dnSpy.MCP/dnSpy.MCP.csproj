@@ -7,7 +7,9 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <Version>2.0.2</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>
+    <!-- NU1701 (VS.Text 15.x netfx shim) is deliberate: pinned to match dnSpy's in-proc
+         assemblies; runtime inside dnSpy resolves dnSpy's own copies. -->
+    <NoWarn>$(NoWarn);1591;NU1701</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>

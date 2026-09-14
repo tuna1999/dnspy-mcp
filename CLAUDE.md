@@ -111,7 +111,7 @@ dnspy_mcp/
 │   │   └── Tools/
 │   │       └── TreeViewTools.cs  # Extension-only (2 tools: get_selected_node, refresh_ui)
 │   │
-│   └── dnSpy.MCP.Headless/      # Standalone exe (no WPF, net10.0-windows) — refs Core + MCP SDK
+│   ├── dnSpy.MCP.Headless/      # Standalone exe (no WPF, net10.0-windows) — refs Core + MCP SDK
 │       ├── Program.cs            # Host + DI + CLI parse + stdio MCP transport
 │       ├── CliOptions.cs         # --load / --config / --help args
 │       └── Adapters/             # Headless-specific adapter implementations
@@ -121,9 +121,10 @@ dnspy_mcp/
 │           ├── StderrLogSink.cs             # stderr only (MCP stdio rule)
 │           ├── NoOpTreeRefreshNotifier.cs   # No-op
 │           └── AutoToolRegistration.cs      # Reflection wrap Core tools to MCP SDK
+│   │
+│   └── dnSpy.MCP.Tests/          # Unit + headless-E2E + server-gate tests (xUnit, spawn real processes)
 │
 ├── deps/                         # dnSpy DLL references (Contracts, Logic, dnlib, Decompilers)
-├── tests/                        # Test projects (Phase 6 — TBD)
 └── scripts/
     ├── build.ps1                 # Build + deploy script
     └── verify-tool-count.ps1     # Tool-count guard (scans Core + Extension tools dirs)

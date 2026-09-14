@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
+    <!-- NU1701: VS.Text 15.x netfx-shim packages arrive transitively via the extension
+         project reference; the pin is deliberate (matches dnSpy's in-proc assemblies). -->
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
