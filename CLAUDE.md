@@ -224,8 +224,9 @@ POST /  [{"method":"tools/call","params":{"name":"load_assembly","arguments":{"p
 ### Server Hardening
 
 `McpServerHost` has these protections:
- - **Request body limit**: 1MB max (checked from the `Content-Length` header before the body is read)
- MCP tools run on **background threads** (accepted-connection handler tasks). All WPF TreeView/UI access must marshal to the UI thread:
+- **Request body limit**: 1MB max (checked from the `Content-Length` header before the body is read)
+- **Loopback Host validation**: when bound to a loopback address, any request whose `Host` header doesn't name a loopback origin (`127.0.0.1`/`localhost`/`[::1]`, with or without port) is rejected with 403 — blocks DNS rebinding (public hostname resolving to 127.0.0.1, browser reads responses same-origin). Not enforced when deliberately bound non-loopback (LAN mode). Gate config is snapshotted at `StartAsync` using the actual bound port.
+- **Origin gate**: requests carrying an `Origin` header (i.e., sent from a browser) are rejected 403 unless the origin is listed in `AllowedOrigins` (comma-separated; `*` = allow all) — blocks drive-by no-preflight `text/plain` POSTs that any webpage can fire at localhost. Non-browser clients (MCP clients, curl) send no `Origin` and are unaffected. `Origin: null` is rejected.
 - **Concurrency limit**: `SemaphoreSlim(4)` — max 4 simultaneous requests
 - **`volatile _running`**: thread-safe flag, set after listener starts
 - **Auth fail-closed**: if `RequireAuth=true` but `ApiToken` is empty, the server refuses to start (`InvalidOperationException`). Auth config is snapshotted at `StartAsync` so in-flight settings edits can't race the comparison. Token compared with `CryptographicOperations.FixedTimeEquals` (constant-time, no timing leak).
@@ -236,7 +237,6 @@ POST /  [{"method":"tools/call","params":{"name":"load_assembly","arguments":{"p
 - **Tool execution timeout**: configurable via `ToolTimeoutSeconds` (default 30s). On timeout the in-flight work is **cancelled** (not just abandoned): `McpServerHost` opens a `ToolCallScope` (AsyncLocal) that `DnSpyDecompilerSourceProvider` forwards into dnSpy's `DecompilationContext.CancellationToken` — slow obfuscated-method decompiles stop burning CPU once the client gets the timeout error.
 
 ### WPF Thread Safety
- - **Request body limit**: 1MB max (checked from the `Content-Length` header before the body is read)
  MCP tools run on **background threads** (accepted-connection handler tasks). All WPF TreeView/UI access must marshal to the UI thread:
 ```csharp
 // CORRECT

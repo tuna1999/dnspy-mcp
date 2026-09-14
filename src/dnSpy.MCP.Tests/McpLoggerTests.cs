@@ -13,6 +13,7 @@ namespace dnSpy.MCP.Tests;
 /// log events. McpLogger is process-wide static state — serialize all tests through
 /// a single lock so parallel xunit collections can't interleave entries.
 /// </summary>
+[Collection("mcp-logger-serial")]   // shares McpLogger static state with McpServerHostGateTests
 public class McpLoggerTests {
     static readonly object LoggerLock = new();
 

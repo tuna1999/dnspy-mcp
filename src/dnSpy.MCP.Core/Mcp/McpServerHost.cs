@@ -32,9 +32,18 @@ namespace dnSpy.MCP.Core.Mcp
         /// Auth config snapshot taken at StartAsync. Auth must stay stable while the server
         /// runs — reading the mutable <see cref="McpSettings.ApiToken"/> per-request would let
         /// an in-flight settings edit (debounced 500ms save) race the comparison.
-        /// </summary>
         private bool _authRequired;
         private byte[]? _authExpectedToken;
+
+        /// <summary>
+        /// Anti drive-by / DNS-rebinding gate (same snapshot pattern as auth above).
+        /// Browsers always send Host and attach Origin to cross-origin POSTs; non-browser
+        /// clients (MCP clients, curl) send neither — the gate is invisible to them.
+        /// </summary>
+        private bool _enforceLoopbackHost;
+        private HashSet<string> _allowedHosts = new(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
+        private bool _originWildcard;
 
         /// <summary>
         /// Exclusive lock held by destructive tools (update_method_body, rename_*).
@@ -81,6 +90,23 @@ namespace dnSpy.MCP.Core.Mcp
 
             _listener = new TcpListener(ipAddress, _settings.Port);
             _listener.Start();
+            // Gate snapshot (auth snapshot is taken above). Uses the ACTUAL bound port —
+            // settings.Port may be 0 (OS-assigned).
+            var boundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            _enforceLoopbackHost = ipAddress.Equals(IPAddress.Loopback) || ipAddress.Equals(IPAddress.IPv6Loopback);
+            _allowedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                $"127.0.0.1:{boundPort}", $"localhost:{boundPort}", $"[::1]:{boundPort}",
+                "127.0.0.1", "localhost", "[::1]",   // portless forms (HTTP/1.1 may omit the port)
+            };
+            _originWildcard = false;
+            _allowedOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(_settings.AllowedOrigins)) {
+                foreach (var origin in _settings.AllowedOrigins.Split(',')) {
+                    var trimmed = origin.Trim();
+                    if (trimmed == "*") _originWildcard = true;
+                    else if (trimmed.Length > 0) _allowedOrigins.Add(trimmed);
+                }
+            }
 
             // Auth snapshot is taken above (stable for the server's lifetime; reload requires restart).
             _running = true;
@@ -146,6 +172,15 @@ namespace dnSpy.MCP.Core.Mcp
                     var colonIdx = headerLine.IndexOf(':');
                     if (colonIdx > 0)
                         headers[headerLine.Substring(0, colonIdx).Trim()] = headerLine.Substring(colonIdx + 1).Trim();
+                }
+
+                // Anti drive-by / DNS-rebinding gate. Applies to ALL endpoints (health,
+                // preflight, POST) — must run before any request handling.
+                if (!ValidateHostAndOrigin(headers, out var gateReason))
+                {
+                    McpLogger.Warn($"Rejected request: {gateReason}");
+                    await WriteJsonResponseAsync(stream, 403, new { error = gateReason });
+                    return;
                 }
 
                 // Health check endpoint
@@ -329,6 +364,38 @@ namespace dnSpy.MCP.Core.Mcp
             {
                 McpLogger.Error(ex, "Connection handler error");
             }
+        }
+
+        /// <summary>
+        /// Validates Host + Origin headers against the StartAsync snapshot:
+        ///   - Host: when loopback-bound, must name a loopback origin. Blocks DNS rebinding,
+        ///     where a public hostname resolves to 127.0.0.1 and the browser reads responses
+        ///     same-origin. Not enforced when the user deliberately bound a non-loopback
+        ///     interface (LAN mode can't predict client-facing hostnames).
+        ///   - Origin: browsers attach Origin to every cross-origin POST — any webpage can
+        ///     fire a no-preflight text/plain POST at localhost. An Origin not allowlisted
+        ///     in settings is rejected. "Origin: null" (sandboxed iframe) is rejected too.
+        /// Missing headers pass: only browsers send them reliably, so non-browser clients
+        /// (MCP clients, curl) are unaffected.
+        /// </summary>
+        private bool ValidateHostAndOrigin(Dictionary<string, string> headers, out string reason)
+        {
+            reason = "";
+            if (_enforceLoopbackHost && headers.TryGetValue("Host", out var host) && host.Length > 0)
+            {
+                if (!_allowedHosts.Contains(host.Trim()))
+                {
+                    reason = "Forbidden: Host header is not a loopback address";
+                    return false;
+                }
+            }
+            if (!_originWildcard && headers.TryGetValue("Origin", out var origin) && origin.Length > 0
+                && !_allowedOrigins.Contains(origin.Trim()))
+            {
+                reason = "Forbidden: Origin is not in AllowedOrigins";
+                return false;
+            }
+            return true;
         }
 
         private async Task WriteJsonResponseAsync(Stream stream, int statusCode, object data)
