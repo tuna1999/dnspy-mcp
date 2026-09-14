@@ -32,6 +32,7 @@ namespace dnSpy.MCP.Core.Mcp
         /// Auth config snapshot taken at StartAsync. Auth must stay stable while the server
         /// runs — reading the mutable <see cref="McpSettings.ApiToken"/> per-request would let
         /// an in-flight settings edit (debounced 500ms save) race the comparison.
+        /// </summary>
         private bool _authRequired;
         private byte[]? _authExpectedToken;
 

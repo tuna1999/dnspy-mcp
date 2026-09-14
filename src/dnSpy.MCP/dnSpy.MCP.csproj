@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <Version>2.0.2</Version>
+    <Version>2.0.3</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- NU1701 (VS.Text 15.x netfx shim) is deliberate: pinned to match dnSpy's in-proc
          assemblies; runtime inside dnSpy resolves dnSpy's own copies. -->
