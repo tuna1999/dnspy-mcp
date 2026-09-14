@@ -1,6 +1,6 @@
 # dnSpy MCP Server
 
-[![Build](https://github.com/your-repo/dnspy_mcp/actions/workflows/build.yml/badge.svg)](../../actions)
+[![Build](https://github.com/tuna1999/dnspy-mcp/actions/workflows/build.yml/badge.svg)](../../actions/workflows/build.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [dnSpy](https://github.com/dnSpyEx/dnSpy) — the .NET debugger and assembly editor — enabling AI agents to decompile, analyze, search, and patch .NET assemblies directly through dnSpy's engine.

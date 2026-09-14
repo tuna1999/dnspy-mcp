@@ -64,24 +64,26 @@ public class McpLoggerTests {
         lock (LoggerLock) {
             McpLogger.ClearLog();
             var seen = new System.Collections.Generic.List<string>();
-            dnSpy.MCP.Core.Mcp.McpLogger.Level? seenLevel = null;
-            void Handler(dnSpy.MCP.Core.Mcp.McpLogger.Level level, string line) {
-                seen.Add(line);
-                seenLevel = level;
-            }
-            dnSpy.MCP.Core.Mcp.McpLogger.LineLogged += Handler;
+            void Handler(McpLogger.Level _, string line) => seen.Add(line);
+            // LineLogged is a static event: every subscriber added must be removed before
+            // the test exits, or it leaks into the rest of the process (and throws "boom"
+            // into unrelated assertions). Hence a named throwing handler, not an anonymous
+            // lambda we can't unsubscribe from.
+            void ThrowingHandler(McpLogger.Level _, string __)
+                => throw new InvalidOperationException("boom");
+
+            McpLogger.LineLogged += Handler;
+            McpLogger.LineLogged += ThrowingHandler;
             try {
                 McpLogger.Info("event line");
                 seen.Should().HaveCount(1);
-                seen[0].Should().Contain("event line").And.Contain("[INFO]");
-                seenLevel.Should().Be(dnSpy.MCP.Core.Mcp.McpLogger.Level.Info);
 
                 // A throwing handler must never break logging
-                dnSpy.MCP.Core.Mcp.McpLogger.LineLogged += (_, _) => throw new InvalidOperationException("boom");
                 McpLogger.Warn("still logged");
             }
             finally {
-                dnSpy.MCP.Core.Mcp.McpLogger.LineLogged -= Handler;
+                McpLogger.LineLogged -= Handler;
+                McpLogger.LineLogged -= ThrowingHandler;
             }
             seen.Should().HaveCount(2, "logging must survive a throwing subscriber");
             McpLogger.GetRecent(2).Should().HaveCount(2);

@@ -166,10 +166,14 @@ namespace dnSpy.MCP {
             // Core assembly holds the 36 instance tools; the Extension assembly holds
             // Extension-only static tools (TreeViewTools: get_selected_node, refresh_u_i).
             var registry = new ToolRegistry(ctx, typeof(McpContext).Assembly, typeof(TheExtension).Assembly);
-            _serverHost = new McpServerHost(Settings!, registry);
+            var host = new McpServerHost(Settings!, registry);
+            _serverHost = host;
+            // Capture the local: the background task must start exactly this instance.
+            // Rereading the mutable _serverHost field here would let a fast Start→Stop→Start
+            // cycle point two tasks at the same (newer) host and never start the first.
             Task.Run(async () => {
                 try {
-                    await _serverHost.StartAsync();
+                    await host.StartAsync();
                 }
                 catch (Exception ex) {
                     McpLogger.Error(ex, "Server startup");
