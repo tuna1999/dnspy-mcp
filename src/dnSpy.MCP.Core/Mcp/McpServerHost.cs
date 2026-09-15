@@ -527,6 +527,10 @@ namespace dnSpy.MCP.Core.Mcp
                 return JsonRpc.MakeError(request["id"], -32601, $"Unknown tool: {toolName}");
             }
 
+            // Declared OUTSIDE the try: the TimeoutException catch must cancel it
+            // deterministically (WaitAsync's own timer can win the race against the
+            // CTS timer), and the finally disposes it on every path.
+            CancellationTokenSource? timeoutCts = null;
             try
             {
                 var timeout = TimeSpan.FromSeconds(_settings.ToolTimeoutSeconds);
@@ -535,7 +539,7 @@ namespace dnSpy.MCP.Core.Mcp
                 // a thread-pool thread after the client already got the timeout error — retries
                 // pile up and everything gets slower. ToolCallScope flows the token into
                 // DnSpyDecompilerSourceProvider via AsyncLocal (Task.Run captures it below).
-                using var timeoutCts = new CancellationTokenSource(timeout);
+                timeoutCts = new CancellationTokenSource(timeout);
                 ToolCallScope.Set(timeoutCts.Token);
 
                 // Destructive tools (patch/rename) must run under the mutation lock so concurrent
@@ -571,6 +575,11 @@ namespace dnSpy.MCP.Core.Mcp
             }
             catch (TimeoutException)
             {
+                // WaitAsync runs its OWN timer; it can fire before timeoutCts's timer
+                // (observed on loaded CI runners). Cancel deterministically here — the
+                // finally's dispose would otherwise retire the source uncancelled and
+                // the in-flight tool would never observe ToolCallScope cancellation.
+                timeoutCts?.Cancel();
                 McpLogger.Warn($"Tool '{toolName}' timed out after {_settings.ToolTimeoutSeconds}s");
                 return JsonRpc.MakeError(request["id"], -32603, $"Tool execution timed out after {_settings.ToolTimeoutSeconds} seconds");
             }
@@ -582,6 +591,7 @@ namespace dnSpy.MCP.Core.Mcp
             finally
             {
                 ToolCallScope.Set(CancellationToken.None);
+                timeoutCts?.Dispose();
             }
         }
 
