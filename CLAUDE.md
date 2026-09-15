@@ -140,7 +140,7 @@ dnspy_mcp/
 
 ### Why TcpListener Instead of MCP SDK in Extension?
 
-The official MCP SDK 1.2.0 pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: Extension uses a minimal custom transport over `System.Net.Sockets.TcpListener` (see `McpServerHost` / `BufferedLineReader`). Headless uses MCP SDK's stdio transport (no conflict because it runs in its own process).
+The official MCP SDK (`ModelContextProtocol` 1.4.0) pulls `Microsoft.Extensions.*` 10.x which may conflict with dnSpy's transitive dependencies on .NET 10. Solution: Extension uses a minimal custom transport over `System.Net.Sockets.TcpListener` (see `McpServerHost` / `BufferedLineReader`). Headless uses MCP SDK's stdio transport (no conflict because it runs in its own process).
 
 ### Extension Lifecycle
 
@@ -215,7 +215,7 @@ dnSpy can open multiple binaries simultaneously. To avoid ambiguous results:
 
 ### Batch Processing
 
-JSON-RPC batch requests (arrays) are processed **in parallel** — all requests in a batch fire concurrently and results are collected in order. This enables efficient batch analysis pipelines:
+JSON-RPC batch requests (arrays) are processed **sequentially within one connection** — requests in a batch are awaited one by one and results collected in order. Concurrency comes from **multiple simultaneous connections** (up to `MaxConcurrency`, default 4): batch pipelines should send batches over several connections for throughput. Batch example:
 
 ```
 POST /  [{"method":"tools/call","params":{"name":"load_assembly","arguments":{"path":"D:\\bin\\A.dll"}},...},

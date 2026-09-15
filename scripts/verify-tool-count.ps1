@@ -82,14 +82,24 @@ if ($claudeText -match '## Available MCP Tools \((\d+)\)') {
     $advertised = [int]$Matches[1]
 }
 
+Write-Host "CLAUDE.md advertises: $(if ($null -eq $advertised) { '(header not found)' } else { $advertised })"
+
+# Fail closed: a missing/mangled header must not silently disable the drift check —
+# that is exactly the failure class this guard exists to catch. (Previously a missing
+# header left $advertised null and the mismatch check was skipped, exiting 0.)
+if ($null -eq $advertised) {
+    Write-Error "CLAUDE.md tool-count header '## Available MCP Tools (NN)' not found — cannot verify tool count."
+    exit 1
+}
+
 $actual = $toolNames.Count
 Write-Host "Discovered tools ($actual):"
 $toolNames | Sort-Object | ForEach-Object { Write-Host "  - $_" }
 Write-Host ""
-Write-Host "CLAUDE.md advertises: $(if ($null -eq $advertised) { '(header not found)' } else { $advertised })"
+
 
 $failed = $false
-if ($null -ne $advertised -and $advertised -ne $actual) {
+if ($advertised -ne $actual) {
     Write-Error "MISMATCH: CLAUDE.md advertises $advertised tools but $actual were discovered."
     $failed = $true
 }

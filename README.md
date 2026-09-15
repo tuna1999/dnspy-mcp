@@ -12,7 +12,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [dn
 - **Two hosts, one core** — run as a dnSpy extension (HTTP) or a standalone headless exe (stdio); identical tools and output
 - **Zero-drag transport** — the extension uses a minimal `TcpListener`-based HTTP transport, avoiding version conflicts with dnSpy's runtime
 - **Hardened by default** — loopback bind, constant-time token auth, concurrency caps, request-size limits, per-tool timeouts, serialized mutations
-- **Batch-ready** — parallel JSON-RPC batch processing for high-throughput analysis pipelines
+- **Batch-ready** — JSON-RPC batch requests (send an array, get ordered results); requests run sequentially per connection, so use several connections for throughput
 
 ## How It Works
 
@@ -90,7 +90,6 @@ Two hosts share one tool core (`dnSpy.MCP.Core`):
 | `get_type_members` | List all members of a type with optional filter |
 | `get_fields` | Detailed field info: type, access, static/const, values |
 | `get_properties` | Property details: getter/setter, type, access |
-| `get_type_hierarchy` | Inheritance chain, interfaces, member counts |
 
 ### Custom Attributes
 | Tool | Description |
@@ -122,7 +121,7 @@ Two hosts share one tool core (`dnSpy.MCP.Core`):
 
 - **Multiple assemblies?** Call `list_loaded_assemblies` first; search tools accept an optional `assembly` parameter to scope results.
 - **Method identifiers** — all method-accepting tools resolve hex tokens, plain tokens, full names, then short names via one shared resolver. Prefer full names (`Namespace.Class::Method`) to avoid ambiguity.
-- **Mutating tools** (`rename_*`, `update_method_body`) are dry-run by default — pass the explicit confirm flag to apply.
+- **Mutating tools** (`rename_*`, `update_method_body`) are dry-run by default — pass `dryRun: false` to apply.
 
 ## Getting Started
 
@@ -416,8 +415,7 @@ Method names are automatically converted to `snake_case` for the MCP protocol (e
 ## Architecture Notes
 
 ### Why a custom TcpListener transport instead of MCP SDK?
-
-The official MCP SDK (`ModelContextProtocol` 1.2.0) pulls `Microsoft.Extensions.*` 10.x dependencies that conflict with the versions dnSpy ships on its .NET runtime. This is a hard version conflict that cannot be resolved with binding redirects. The solution is a minimal custom HTTP transport over `System.Net.Sockets.TcpListener`. The headless exe runs in its own process, so it uses the MCP SDK's stdio transport without conflict.
+The official MCP SDK (`ModelContextProtocol` 1.4.0) pulls `Microsoft.Extensions.*` 10.x dependencies that conflict with the versions dnSpy ships on its .NET runtime. This is a hard version conflict that cannot be resolved with binding redirects. The solution is a minimal custom HTTP transport over `System.Net.Sockets.TcpListener`. The headless exe runs in its own process, so it uses the MCP SDK's stdio transport without conflict.
 
 ### Standalone build
 
