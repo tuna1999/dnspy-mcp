@@ -139,7 +139,18 @@ namespace dnSpy.MCP.Core.Mcp {
                     }
                 }
 
-                var result = Method.Invoke(Instance, callArgs);
+                // Reflection wraps the real tool exception in TargetInvocationException whose
+                // Message is the useless "Exception has been thrown by the target of an
+                // invocation." Rethrow the inner exception with its original stack so callers
+                // (and MCP clients) see the actual error.
+                object? result;
+                try {
+                    result = Method.Invoke(Instance, callArgs);
+                }
+                catch (TargetInvocationException tie) when (tie.InnerException != null) {
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
+                    throw;  // unreachable
+                }
                 return result?.ToString() ?? "";
             }
 

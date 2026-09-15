@@ -17,8 +17,14 @@ namespace dnSpy.MCP.Core.Mcp {
 
         public BufferedLineReader(Stream stream) => _stream = stream;
 
-        public async Task<string?> ReadLineAsync(CancellationToken ct = default) {
-            var sb = new StringBuilder(256);
+        /// <summary>
+        /// Reads a \n or \r\n terminated line, preserving unconsumed bytes across calls.
+        /// <paramref name="maxChars"/> caps the line length: a peer streaming bytes with
+        /// no newline would otherwise grow the StringBuilder without bound (slowloris
+        /// memory variant). Throws <see cref="IOException"/> when the cap is exceeded.
+        /// </summary>
+        public async Task<string?> ReadLineAsync(CancellationToken ct = default, int maxChars = int.MaxValue) {
+        var sb = new StringBuilder(256);
 
             while (true) {
                 if (_bufPos >= _bufLen) {
@@ -38,10 +44,12 @@ namespace dnSpy.MCP.Core.Mcp {
                     break;
                 }
                 if (b == '\n') break;
+                if (sb.Length >= maxChars)
+                    throw new IOException($"Request line/header exceeds {maxChars} characters");
                 sb.Append((char)b);
             }
             return sb.ToString();
-        }
+            }
 
         /// <summary>
         /// Reads exactly <paramref name="count"/> bytes, draining the internal

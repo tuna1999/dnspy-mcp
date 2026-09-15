@@ -23,10 +23,25 @@ namespace dnSpy.MCP.Core.Mcp
         private readonly McpSettings _settings;
         private readonly ToolRegistry _registry;
         private volatile bool _running;
+        /// <summary>1 while a StartAsync call is between claiming the start slot and
+        /// completing (success or failure). Guards against concurrent starts.</summary>
+        private int _starting;
+        /// <summary>Set by Stop() when called during the startup window (before
+        /// _running becomes true) so StartAsync applies the stop once fully bound.</summary>
+        private volatile bool _stopRequested;
         private readonly SemaphoreSlim _concurrency;
         private readonly Stopwatch _uptime = Stopwatch.StartNew();
         private int _activeConnections;
         private TaskCompletionSource _stoppedTcs = new();
+
+        /// <summary>Deadline for reading the request line + headers + body of one
+        /// request. NetworkStream.ReadTimeout only governs synchronous reads — the
+        /// async path needs a cancelled token, otherwise a peer sending a partial
+        /// request line pins one of the MaxConcurrency slots forever (4 such
+        /// connections wedge the whole server, including /health).</summary>
+        private static readonly TimeSpan ReadPhaseTimeout = TimeSpan.FromSeconds(30);
+        private const int MaxHeaderLineChars = 16 * 1024;
+        private const int MaxHeaderCount = 100;
 
         /// <summary>
         /// Auth config snapshot taken at StartAsync. Auth must stay stable while the server
@@ -63,6 +78,41 @@ namespace dnSpy.MCP.Core.Mcp
         }
 
         public async Task StartAsync()
+        {
+            if (_running) return;
+            // Claim the start slot so a concurrent StartAsync on the same instance
+            // can't interleave with this one (double bind / double listener task).
+            if (Interlocked.CompareExchange(ref _starting, 1, 0) != 0) return;
+            // Clear any stale stop request from a previous Stop() on an idle host —
+            // only a Stop() racing THIS startup window is meaningful (see below).
+            _stopRequested = false;
+            try {
+                await StartAsyncCore();
+            }
+            catch {
+                // Partial-start cleanup: StartAsyncCore may have created the CTS and/or
+                // the listener before failing — release them so a retry can rebind.
+                _listener?.Stop();
+                _listener = null;
+                _cts?.Cancel();
+                _cts?.Dispose();
+                _cts = null;
+                _running = false;
+                _starting = 0;
+                throw;
+            }
+            _starting = 0;
+
+            // A Stop() issued while we were still binding saw !_running and could only
+            // latch a request. Apply it now that the server is fully up — otherwise the
+            // server would end up running after the user clicked Stop.
+            if (_stopRequested) {
+                _stopRequested = false;
+                Stop();
+            }
+        }
+
+        private async Task StartAsyncCore()
         {
             if (_running) return;
 
@@ -142,6 +192,13 @@ namespace dnSpy.MCP.Core.Mcp
                     });
                 }
                 catch (OperationCanceledException) { break; }
+                catch (SocketException) when (_running)
+                {
+                    // Transient accept failure (e.g. connection reset mid-accept).
+                    // Killing the loop here would leave the port bound with _running
+                    // true and no one accepting — back off briefly and keep serving.
+                    try { await Task.Delay(100, ct); } catch (OperationCanceledException) { break; }
+                }
                 catch (SocketException) { break; }
                 catch (ObjectDisposedException) { break; }
                 catch (NullReferenceException) { break; } // listener stopped concurrently
@@ -157,19 +214,27 @@ namespace dnSpy.MCP.Core.Mcp
                 stream.WriteTimeout = 30_000;
                 var reader = new BufferedLineReader(stream);
 
+                // Anti-slowloris read deadline: covers request line, headers, and body.
+                // See ReadPhaseTimeout. Cancellation drops the connection (outer catch).
+                using var readPhaseCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readPhaseCts.CancelAfter(ReadPhaseTimeout);
+
                 // Read request line: "POST / HTTP/1.1\r\n"
-                var requestLine = await reader.ReadLineAsync(ct);
+                var requestLine = await reader.ReadLineAsync(readPhaseCts.Token, MaxHeaderLineChars);
                 if (requestLine == null) return;
 
                 var spaceIdx = requestLine.IndexOf(' ');
                 if (spaceIdx < 0) return;
                 var method = requestLine.Substring(0, spaceIdx);
 
-                // Read headers
+                // Read headers (bounded count + per-line length cap)
                 var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 string? headerLine;
-                while ((headerLine = await reader.ReadLineAsync(ct)) != null && headerLine.Length > 0)
+                var headerCount = 0;
+                while ((headerLine = await reader.ReadLineAsync(readPhaseCts.Token, MaxHeaderLineChars)) != null && headerLine.Length > 0)
                 {
+                    if (++headerCount > MaxHeaderCount)
+                        throw new IOException($"Too many headers (max {MaxHeaderCount})");
                     var colonIdx = headerLine.IndexOf(':');
                     if (colonIdx > 0)
                         headers[headerLine.Substring(0, colonIdx).Trim()] = headerLine.Substring(colonIdx + 1).Trim();
@@ -253,7 +318,7 @@ namespace dnSpy.MCP.Core.Mcp
                 if (contentLength > 0)
                 {
                     var buffer = new byte[contentLength];
-                    await reader.ReadExactlyAsync(buffer, 0, contentLength, ct);
+                    await reader.ReadExactlyAsync(buffer, 0, contentLength, readPhaseCts.Token);
                     body = Encoding.UTF8.GetString(buffer);
                 }
                 else
@@ -440,6 +505,7 @@ namespace dnSpy.MCP.Core.Mcp
             200 => "OK",
             204 => "No Content",
             401 => "Unauthorized",
+            403 => "Forbidden",
             405 => "Method Not Allowed",
             413 => "Payload Too Large",
             _ => "Unknown"
@@ -521,7 +587,14 @@ namespace dnSpy.MCP.Core.Mcp
 
         public void Stop()
         {
-            if (!_running) return;
+            if (!_running) {
+                // Startup window: a start is in flight but _running is not yet true.
+                // Record the request; StartAsync applies it right after binding.
+                // (A Stop() on a fully idle host is a no-op — StartAsync clears the
+                // latch at the beginning of the next start so it can't leak.)
+                _stopRequested = true;
+                return;
+            }
 
             _running = false;
             _cts?.Cancel();

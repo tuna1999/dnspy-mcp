@@ -275,6 +275,103 @@ public class McpServerHostGateTests {
         }
         finally { host.Stop(); host.Dispose(); }
     }
+
+    // ---- Host allowlist exact-match vectors ----
+    // The allowlist is literal strings; these cases pin that a future refactor to
+    // prefix/suffix matching (e.g. host.StartsWith("localhost")) cannot silently
+    // accept rebinding hostnames like "localhost.evil.example".
+
+    [Theory]
+    [InlineData("[::1]")]     // IPv6 loopback with port appended by the test
+    [InlineData("LOCALHOST")] // case-insensitive comparison
+    public async Task Post_with_ipv6_or_mixedcase_loopback_host_passes(string hostName) {
+        var (host, port) = StartServer();
+        try {
+            var response = await SendAsync(port, "POST", "/",
+                headers: new Dictionary<string, string> { ["Host"] = $"{hostName}:{port}" },
+                body: ToolsListBody);
+            Assert.StartsWith("HTTP/1.1 200", StatusLine(response));
+        }
+        finally { host.Stop(); host.Dispose(); }
+    }
+
+    [Fact]
+    public async Task Post_with_portless_ipv6_loopback_host_passes() {
+        var (host, port) = StartServer();
+        try {
+            var response = await SendAsync(port, "POST", "/",
+                headers: new Dictionary<string, string> { ["Host"] = "[::1]" },
+                body: ToolsListBody);
+            Assert.StartsWith("HTTP/1.1 200", StatusLine(response));
+        }
+        finally { host.Stop(); host.Dispose(); }
+    }
+
+    [Theory]
+    [InlineData("localhost.")]                  // trailing dot = distinct origin
+    [InlineData("localhost.evil.example")]      // prefix-match would wrongly accept
+    [InlineData("127.0.0.1.evil.example")]      // suffix-of-IP trick
+    [InlineData("local")]                       // substring, not the full literal
+    public async Task Post_with_near_miss_loopback_host_is_rejected_403(string hostName) {
+        var (host, port) = StartServer();
+        try {
+            var response = await SendAsync(port, "POST", "/",
+                headers: new Dictionary<string, string> { ["Host"] = $"{hostName}:{port}" },
+                body: ToolsListBody);
+            Assert.StartsWith("HTTP/1.1 403", StatusLine(response));
+        }
+        finally { host.Stop(); host.Dispose(); }
+    }
+
+    // ---- Auth (Bearer token; snapshot + fail-closed at start) ----
+
+    [Fact]
+    public async Task Start_with_requireauth_and_empty_token_throws_fail_closed() {
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+
+        var settings = new McpSettings { Host = "127.0.0.1", Port = port, RequireAuth = true };
+        var host = new McpServerHost(settings, new ToolRegistry(StubContext(), typeof(McpContext).Assembly));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => host.StartAsync());
+        host.Dispose();
+    }
+
+    [Fact]
+    public async Task Auth_required_rejects_missing_and_wrong_token_and_accepts_correct() {
+        var (host, port) = StartServer(s => { s.RequireAuth = true; s.ApiToken = "secret-token"; });
+        try {
+            var missing = await SendAsync(port, "POST", "/", body: ToolsListBody);
+            Assert.StartsWith("HTTP/1.1 401", StatusLine(missing));
+
+            var wrong = await SendAsync(port, "POST", "/",
+                headers: new Dictionary<string, string> { ["Authorization"] = "Bearer wrong" },
+                body: ToolsListBody);
+            Assert.StartsWith("HTTP/1.1 401", StatusLine(wrong));
+
+            var correct = await SendAsync(port, "POST", "/",
+                headers: new Dictionary<string, string> { ["Authorization"] = "Bearer secret-token" },
+                body: ToolsListBody);
+            Assert.StartsWith("HTTP/1.1 200", StatusLine(correct));
+            Assert.Contains("decompile_method", correct);
+        }
+        finally { host.Stop(); host.Dispose(); }
+    }
+
+    [Fact]
+    public async Task Gate_403_fires_before_auth_401() {
+        // A request failing BOTH the gate and auth must get the gate's 403: the gate
+        // protects unauthenticated endpoints (health/preflight) too, so it must run first.
+        var (host, port) = StartServer(s => { s.RequireAuth = true; s.ApiToken = "secret-token"; });
+        try {
+            var response = await SendAsync(port, "POST", "/",
+                headers: new Dictionary<string, string> { ["Host"] = $"evil.example:{port}" },
+                body: ToolsListBody);
+            Assert.StartsWith("HTTP/1.1 403", StatusLine(response));
+        }
+        finally { host.Stop(); host.Dispose(); }
+    }
 }
 
 /// <summary>xUnit collection: runs sequentially alongside McpLoggerTests. McpLogger is
