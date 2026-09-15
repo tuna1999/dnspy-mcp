@@ -8,7 +8,7 @@
          CA1416 (198 false-positives in CI logs) and resolves the WindowsBase 4.0 vs 10.0
          conflict from MSB3277. No netfx or WPF use; the suffix only enables the analyzer. -->
     <TargetFramework>net10.0-windows</TargetFramework>
-    <Version>2.0.3</Version>
+    <Version>2.0.4</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- MSB3277: .NET 10 SDK ships WindowsBase 4.0.0.0 in the Core App ref pack
          and dnSpy.Contracts (net10.0-windows) requires 10.0.0.0 — assembly
