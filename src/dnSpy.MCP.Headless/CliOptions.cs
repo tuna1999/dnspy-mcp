@@ -36,7 +36,13 @@ public sealed class CliOptions {
         return opts;
     }
 
-    /// <summary>Expand any glob patterns in PreLoads into concrete file paths.</summary>
+    /// <summary>
+    /// Expand any glob patterns in PreLoads into concrete file paths.
+    /// Literal (non-wildcard) paths are always kept — even when missing — so
+    /// Program.cs can fail fast with a clear error; silently dropping a typo'd
+    /// literal made that check dead code. Wildcard patterns skip silently when
+    /// they match nothing (an empty glob is a legitimate no-op).
+    /// </summary>
     public IReadOnlyList<string> ExpandLoads() {
         var paths = new List<string>();
         foreach (var pattern in PreLoads) {
@@ -46,14 +52,24 @@ public sealed class CliOptions {
             // a null-only check would pass it through to Directory.GetFiles("", ...)
             // which throws ArgumentException. Catch both null and empty.
             if (string.IsNullOrEmpty(dir) || file.Length == 0) {
-                if (File.Exists(pattern)) paths.Add(pattern);
+                // A wildcard-bearing bare name is a glob over the current directory.
+                // No literal file can be named "*..." on Windows, so treat as glob
+                // and skip when it matches nothing.
+                if (file.Contains('*') || file.Contains('?'))
+                    continue;
+                paths.Add(pattern);
                 continue;
             }
             if (file.Contains('*') || file.Contains('?')) {
-                foreach (var f in Directory.GetFiles(dir, file, SearchOption.TopDirectoryOnly))
-                    paths.Add(f);
+                // Missing glob directory = empty glob = legitimate no-op, skip silently.
+                try {
+                    foreach (var f in Directory.GetFiles(dir, file, SearchOption.TopDirectoryOnly))
+                        paths.Add(f);
+                }
+                catch (DirectoryNotFoundException) {
+                }
             }
-            else if (File.Exists(pattern)) {
+            else {
                 paths.Add(pattern);
             }
         }

@@ -47,8 +47,16 @@ catch (Exception ex) {
 // Build McpContext eagerly — needed for AutoToolRegistration before DI container builds
 var uiScheduler = new InlineUIThreadScheduler();
 var loader = new DnlibAssemblyLoader();
-foreach (var path in preLoadPaths)
-    loader.Load(path);
+foreach (var path in preLoadPaths) {
+    // Fail fast on un-loadable binaries: previously the LoadResult was discarded, so a
+    // --load file that existed but wasn't a valid CLR module was silently skipped and
+    // the server started "successfully" with zero assemblies and no diagnostic.
+    var loadResult = loader.Load(path);
+    if (!loadResult.Success) {
+        Console.Error.WriteLine($"Error: failed to load '{path}': {loadResult.Error}");
+        return 2;
+    }
+}
 
 var ctx = new McpContext(
     assemblyLoader: loader,

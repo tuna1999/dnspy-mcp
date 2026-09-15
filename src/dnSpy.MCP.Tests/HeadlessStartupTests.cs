@@ -45,9 +45,21 @@ public class HeadlessStartupTests {
     }
 
     [Fact]
-    public void CliOptions_ExpandLoads_skips_missing_files() {
+    public void CliOptions_ExpandLoads_keeps_missing_literal_for_fail_fast() {
+        // Literals must survive expansion even when missing so Program.cs can fail
+        // fast with exit 2 (dropping them here made that check dead code and a
+        // typo'd --load path silently started a server with zero assemblies).
+        var missingLiteral = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".dll");
+        var opts = CliOptions.Parse(new[] { "--load", missingLiteral });
+        var paths = opts.ExpandLoads();
+        Assert.Equal(new[] { missingLiteral }, paths);
+    }
+
+    [Fact]
+    public void CliOptions_ExpandLoads_skips_missing_globs() {
+        // Wildcards stay silent-skip: an empty glob is a legitimate no-op.
         var opts = CliOptions.Parse(new[] {
-            "--load", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".dll"),
+            "--load", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "*.dll"),
         });
         Assert.Empty(opts.ExpandLoads());
     }
