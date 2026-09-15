@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Windows;
+using System.Threading;
 using System.Threading.Tasks;
 using dnSpy.Contracts.Decompiler;
 using dnSpy.Contracts.Documents;
@@ -129,57 +130,85 @@ namespace dnSpy.MCP {
         }
 
         public void StartServer() {
-            if (_serverHost != null && _serverHost.IsRunning)
+            // Re-entry guard: a second Start while the first is still binding would
+            // dispose the in-flight host mid-start (its Stop is a latched no-op until
+            // _running flips), wedging the port. McpServerHost also latches stops
+            // issued during its startup window, so this guard just avoids racing it.
+            if (Interlocked.CompareExchange(ref _startBusy, 1, 0) != 0)
                 return;
 
-            // Replace-and-dispose a previously stopped host so its CancellationTokenSource
-            // and listener state are released across stop/start cycles.
-            _serverHost?.Dispose();
-            _serverHost = null;
-
-            var errors = new List<string>();
-            if (DocumentService == null) errors.Add("DocumentService is null");
-            if (DecompilerService == null) errors.Add("DecompilerService is null");
-            if (Settings == null) errors.Add("Settings is null");
-
-            if (errors.Count > 0) {
-                McpLogger.Error($"Cannot start: {string.Join(", ", errors)}");
+            if (_serverHost != null && _serverHost.IsRunning) {
+                Volatile.Write(ref _startBusy, 0);
                 return;
             }
 
-            // Build McpContext + ToolRegistry with real adapters.
-            // WpfUIThreadScheduler is shared between loader, log sink, and notifier so all
-            // UI-thread marshaling goes through one dispatcher path.
-            var uiScheduler = new WpfUIThreadScheduler();
+            try {
+                // Replace-and-dispose a previously stopped host so its CancellationTokenSource
+                // and listener state are released across stop/start cycles.
+                _serverHost?.Dispose();
+                _serverHost = null;
 
-            // Re-resolve tab service + tree view for the notifier (they may have been resolved
-            // above for TreeViewTools already; TryResolve is cheap on a resolved service).
-            var treeView = ServiceLocator?.TryResolve<IDocumentTreeView>();
-            var tabService = ServiceLocator?.TryResolve<IDocumentTabService>();
+                var errors = new List<string>();
+                if (DocumentService == null) errors.Add("DocumentService is null");
+                if (DecompilerService == null) errors.Add("DecompilerService is null");
+                if (Settings == null) errors.Add("Settings is null");
 
-            var ctx = new McpContext(
-                new DnSpyAssemblyLoader(DocumentService!, uiScheduler),
-                new DnSpyDecompilerSourceProvider(DecompilerService!.Decompiler),
-                uiScheduler,
-                new DnSpyLogSink(),
-                new DnSpyTreeRefreshNotifier(treeView, tabService, DocumentService, uiScheduler));
-            // Core assembly holds the 36 instance tools; the Extension assembly holds
-            // Extension-only static tools (TreeViewTools: get_selected_node, refresh_u_i).
-            var registry = new ToolRegistry(ctx, typeof(McpContext).Assembly, typeof(TheExtension).Assembly);
-            var host = new McpServerHost(Settings!, registry);
-            _serverHost = host;
-            // Capture the local: the background task must start exactly this instance.
-            // Rereading the mutable _serverHost field here would let a fast Start→Stop→Start
-            // cycle point two tasks at the same (newer) host and never start the first.
-            Task.Run(async () => {
-                try {
-                    await host.StartAsync();
+                if (errors.Count > 0) {
+                    McpLogger.Error($"Cannot start: {string.Join(", ", errors)}");
+                    Volatile.Write(ref _startBusy, 0);
+                    return;
                 }
-                catch (Exception ex) {
-                    McpLogger.Error(ex, "Server startup");
-                }
-            });
+
+                // Build McpContext + ToolRegistry with real adapters.
+                // WpfUIThreadScheduler is shared between loader, log sink, and notifier so all
+                // UI-thread marshaling goes through one dispatcher path.
+                var uiScheduler = new WpfUIThreadScheduler();
+
+                // Re-resolve tab service + tree view for the notifier (they may have been resolved
+                // above for TreeViewTools already; TryResolve is cheap on a resolved service).
+                var treeView = ServiceLocator?.TryResolve<IDocumentTreeView>();
+                var tabService = ServiceLocator?.TryResolve<IDocumentTabService>();
+
+                var ctx = new McpContext(
+                    new DnSpyAssemblyLoader(DocumentService!, uiScheduler),
+                    new DnSpyDecompilerSourceProvider(DecompilerService!.Decompiler),
+                    uiScheduler,
+                    new DnSpyLogSink(),
+                    new DnSpyTreeRefreshNotifier(treeView, tabService, DocumentService, uiScheduler));
+                // Core assembly holds the 36 instance tools; the Extension assembly holds
+                // Extension-only static tools (TreeViewTools: get_selected_node, refresh_u_i).
+                var registry = new ToolRegistry(ctx, typeof(McpContext).Assembly, typeof(TheExtension).Assembly);
+                var host = new McpServerHost(Settings!, registry);
+                _serverHost = host;
+
+                // Capture the local: the background task must start exactly this instance.
+                // Rereading the mutable _serverHost field here would let a fast Start→Stop→Start
+                // cycle point two tasks at the same (newer) host and never start the first.
+                Task.Run(async () => {
+                    try {
+                        await host.StartAsync();
+                    }
+                    catch (Exception ex) {
+                        McpLogger.Error(ex, "Server startup");
+                    }
+                    finally {
+                        Volatile.Write(ref _startBusy, 0);
+                    }
+                });
+            }
+            catch (Exception ex) {
+                // Construction failed (adapter creation, ToolRegistry reflection, host
+                // allocation). Release the start guard — otherwise every later Start
+                // click silently no-ops until dnSpy restarts. The guard's own Task.Run
+                // finally does not cover this stretch.
+                McpLogger.Error(ex, "Server startup");
+                Volatile.Write(ref _startBusy, 0);
+            }
         }
+
+        /// <summary>1 while a StartServer call has spawned the startup task and it has
+        /// not completed. Prevents dispose-and-replace of an in-flight host.</summary>
+        private int _startBusy;
 
         public void StopServer() {
             _serverHost?.Stop();

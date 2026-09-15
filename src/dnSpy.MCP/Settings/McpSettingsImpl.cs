@@ -38,23 +38,50 @@ namespace dnSpy.MCP.Settings {
 			PropertyChanged += OnSettingChanged;
 		}
 
-		void OnSettingChanged(object? sender, PropertyChangedEventArgs e) {
-			// Debounce: reset timer on each change, save 500ms after last change
-			_saveTimer?.Dispose();
-			_saveTimer = new Timer(_ => SaveSettings(), null, 500, Timeout.Infinite);
-		}
+        void OnSettingChanged(object? sender, PropertyChangedEventArgs e) {
+            // Debounce: reset timer on each change, save 500ms after last change
+            _saveTimer?.Dispose();
+            _saveTimer = new Timer(_ => SaveSettings(), null, 500, Timeout.Infinite);
+        }
 
-		void SaveSettings() {
-			var sect = settingsService.RecreateSection(SETTINGS_GUID);
-			sect.Attribute(nameof(Port), Port);
-			sect.Attribute(nameof(Host), Host);
-			sect.Attribute(nameof(AutoStart), AutoStart);
-			sect.Attribute(nameof(RequireAuth), RequireAuth);
-			sect.Attribute(nameof(ApiToken), ApiToken);
-			sect.Attribute(nameof(AllowedOrigins), AllowedOrigins);
-			sect.Attribute(nameof(MaxConcurrency), MaxConcurrency);
-			sect.Attribute(nameof(MaxRequestSizeMB), MaxRequestSizeMB);
-			sect.Attribute(nameof(ToolTimeoutSeconds), ToolTimeoutSeconds);
-		}
+        void SaveSettings() {
+            // Timer callbacks run on threadpool threads with NO exception handler —
+            // an unhandled throw here kills the dnSpy process. Never let one escape.
+            try {
+                // Serialize settings-tree mutation onto the WPF UI thread: dnSpy's
+                // ISettingsService is written from the UI thread (options dialog, exit
+                // writer); mutating sections from a threadpool timer can race the
+                // exit-time XmlSettingsWriter enumerating the section collection.
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher is null || dispatcher.CheckAccess())
+                    DoSaveSettings();
+                else
+                    dispatcher.BeginInvoke(() => {
+                        // Guard the DISPATCHED path too: an exception escaping a
+                        // BeginInvoke delegate surfaces as an unhandled dispatcher
+                        // exception on the UI thread, not in the try below.
+                        try { DoSaveSettings(); }
+                        catch (Exception ex) {
+                            System.Diagnostics.Debug.WriteLine($"MCP [SETTINGS SAVE ERROR]: {ex.Message}");
+                        }
+                    });
+            }
+            catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"MCP [SETTINGS SAVE ERROR]: {ex.Message}");
+            }
+        }
+
+        void DoSaveSettings() {
+            var sect = settingsService.RecreateSection(SETTINGS_GUID);
+            sect.Attribute(nameof(Port), Port);
+            sect.Attribute(nameof(Host), Host);
+            sect.Attribute(nameof(AutoStart), AutoStart);
+            sect.Attribute(nameof(RequireAuth), RequireAuth);
+            sect.Attribute(nameof(ApiToken), ApiToken);
+            sect.Attribute(nameof(AllowedOrigins), AllowedOrigins);
+            sect.Attribute(nameof(MaxConcurrency), MaxConcurrency);
+            sect.Attribute(nameof(MaxRequestSizeMB), MaxRequestSizeMB);
+            sect.Attribute(nameof(ToolTimeoutSeconds), ToolTimeoutSeconds);
+        }
 	}
 }
