@@ -37,6 +37,7 @@
     <!-- E2E fixture: built with the solution, copied to test output so the
          headless server can preload it by relative filename. -->
     <ProjectReference Include="TestData\SampleLibrary\SampleLibrary.csproj" />
+    <ProjectReference Include="TestData\DebuggerValuesTarget\DebuggerValuesTarget.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

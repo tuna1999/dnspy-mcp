@@ -89,6 +89,10 @@ namespace dnSpy.MCP {
                             ? null
                             : new dnSpy.MCP.Core.Helpers.MethodResolver(
                                 new DnSpyAssemblyLoader(DocumentService, new WpfUIThreadScheduler())));
+                    DnSpyValueService.Initialize(
+                        ServiceLocator?.TryResolve<dnSpy.Contracts.Debugger.DbgManager>(),
+                        ServiceLocator?.TryResolve<dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService>(),
+                        new WpfUIThreadScheduler());
 
                     LogServiceLocatorStatus(treeView, tabService);
                     McpLogger.Info("MCP extension loaded");
@@ -98,6 +102,7 @@ namespace dnSpy.MCP {
 
                 case ExtensionEvent.AppExit:
                     McpLogger.LineLogged -= OnLogLine;
+                    DnSpyValueService.Dispose();
                     _serverHost?.Dispose();
                     break;
             }

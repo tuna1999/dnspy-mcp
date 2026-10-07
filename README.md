@@ -7,7 +7,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [dn
 
 ## Highlights
 
-- **52 MCP tools** — static analysis, IL patching, and integrated debugger control (36 tools in headless)
+- **55 MCP tools** — static analysis, IL patching, and integrated debugger control (36 tools in headless)
 - **Byte-identical decompiler output** — powered by the same `ICSharpCode.Decompiler` pipeline dnSpy.exe uses
 - **Two hosts, one core** — run as a dnSpy extension (HTTP) or a standalone headless exe (stdio); identical tools and output
 - **Zero-drag transport** — the extension uses a minimal `TcpListener`-based HTTP transport, avoiding version conflicts with dnSpy's runtime
@@ -33,7 +33,7 @@ Two hosts share one tool core (`dnSpy.MCP.Core`):
 - **Extension** — runs inside dnSpy with full UI integration (tree view, tabs, Output pane). Started manually from the **MCP Server** menu so WPF is fully initialized before any tool call touches the UI thread.
 - **Headless** — standalone stdio MCP server for batch analysis: same tools, same decompiled output, no UI, no dnSpy install required at analysis time (only the vendored decompiler DLLs in `deps/`).
 
-## Tools (52 total · 36 in headless)
+## Tools (55 total · 36 in headless)
 
 ### Decompiler
 | Tool | Description |
@@ -132,13 +132,29 @@ Two hosts share one tool core (`dnSpy.MCP.Core`):
 | `debug_set_breakpoint` | Breakpoint on `Namespace.Type::Method` — binds on module load, no PDB needed |
 | `debug_delete_breakpoint` | Delete an MCP breakpoint by id |
 | `debug_list_breakpoints` | List MCP breakpoints |
-| `debug_get_callstack` | Managed call stack; names resolved from assemblies loaded in dnSpy |
+| `debug_get_callstack` | Actual runtime stack; optional `pid`/`thread_id`, no GUI selection change |
+| `debug_list_threads` | Paused threads with process, OS/managed IDs and current-thread marker |
+| `debug_get_locals` | Bounded runtime locals, arguments and `this` for an exact paused frame |
+| `debug_get_value` | Safe instance-field/array page from a pause-scoped value ID |
 | `debug_dismiss_dialog` | Dismiss dnSpy modal error dialogs after a failed launch |
 
 For modern .NET, managed images run through `dotnet.exe`; native apphost EXEs
 launch directly. For an apphost, load its companion managed DLL before setting
 method breakpoints. `debug_start` checks the actual process state, not just
 whether dnSpy accepted the asynchronous launch request.
+
+Runtime inspection requires a fully paused managed frame. `thread_id` requires
+`pid`; omitted selectors use the current thread without changing GUI selection.
+`frame_index=0` is the top frame. Pages use `start_index >= 0`, `count=1..256`
+(default 64), with at most 4,096 retained values and 4,096 UTF-16 units per
+formatted field. Strings retain the engine's preview limit.
+
+A successful `debug_get_locals` replaces the single snapshot and invalidates
+previous `value_id`s. Resume, step, stop and detach invalidate them even after
+another pause. `debug_get_value` does not evaluate expressions, getters,
+`ToString`, debugger displays/proxies or enumerators. Static/Results/Dynamic
+groups are blocked; static reads can trigger type initialization in this engine.
+Unavailable/optimized-out values retain provider errors rather than fake nulls.
 
 ### Tips
 

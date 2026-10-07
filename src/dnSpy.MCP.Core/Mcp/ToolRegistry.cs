@@ -220,10 +220,15 @@ namespace dnSpy.MCP.Core.Mcp {
                     JsonValue jv when matchType == typeof(string) && jv.TryGetValue(out long l) => l.ToString(),
                     JsonValue jv when matchType == typeof(string) && jv.TryGetValue(out double d) => d.ToString(),
                     JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out int n) => n,
-                    JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out long l) => (int)l,
-                    JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out double d) => (int)d,
+                    JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out long l) &&
+                        l >= int.MinValue && l <= int.MaxValue => (int)l,
+                    JsonValue jv when matchType == typeof(int) && jv.TryGetValue(out double d) &&
+                        d >= int.MinValue && d <= int.MaxValue && Math.Truncate(d) == d => (int)d,
                     JsonValue jv when matchType == typeof(long) && jv.TryGetValue(out long l) => l,
                     JsonValue jv when matchType == typeof(long) && jv.TryGetValue(out int n) => (long)n,
+                    JsonValue jv when matchType == typeof(ulong) && jv.TryGetValue(out ulong u) => u,
+                    JsonValue jv when matchType == typeof(ulong) && jv.TryGetValue(out long l) && l >= 0 => (ulong)l,
+                    JsonValue jv when matchType == typeof(ulong) && jv.TryGetValue(out int n) && n >= 0 => (ulong)n,
                     JsonValue jv when matchType == typeof(bool) && jv.TryGetValue(out bool b) => b,
                     JsonValue jv when matchType == typeof(double) && jv.TryGetValue(out double d) => d,
                     JsonValue jv when matchType == typeof(double) && jv.TryGetValue(out int n) => (double)n,
@@ -299,8 +304,9 @@ namespace dnSpy.MCP.Core.Mcp {
         }
 
         private static string MapType(Type t) {
+            t = Nullable.GetUnderlyingType(t) ?? t;
             if (t == typeof(string)) return "string";
-            if (t == typeof(int) || t == typeof(long)) return "integer";
+            if (t == typeof(int) || t == typeof(long) || t == typeof(ulong)) return "integer";
             if (t == typeof(bool)) return "boolean";
             if (t == typeof(float) || t == typeof(double)) return "number";
             return "string";

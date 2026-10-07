@@ -491,44 +491,7 @@ internal static class DnSpyDebuggerService {
         });
     }
 
-    internal static string GetCallstack(int maxFrames) {
-        var m = _manager;
-        if (m is null) return Unavailable;
-        var resolver = _resolver;
-        return UI(() => {
-            if (!m.IsDebugging) return "Error: not debugging.";
-            if (m.IsRunning == true) return "Error: process is running — break first (debug_break_all / debug_wait_paused).";
-            var thread = m.CurrentThread.Current;
-            if (thread is null) return "Error: no current thread.";
-            var frames = thread.GetFrames(Math.Max(1, maxFrames));
-            if (frames.Length == 0) return "No frames.";
-            var sb = new StringBuilder();
-            for (int i = 0; i < frames.Length; i++) {
-                var f = frames[i];
-                var moduleName = f.Module?.Name ?? "?";
-                string method;
-                if (f.HasFunctionToken && resolver != null)
-                    method = ResolveTokenName(resolver, moduleName, f.FunctionToken)
-                             ?? $"token:0x{f.FunctionToken:X8}";
-                else
-                    method = "(native/unknown)";
-                sb.AppendLine($"#{i} {moduleName}!{method} + IL_0x{f.FunctionOffset:X}");
-            }
-            return sb.ToString();
-        });
-    }
+    internal static string GetCallstack(int maxFrames, int? pid, ulong? threadId) =>
+        DnSpyValueService.GetCallstack(maxFrames, pid, threadId);
 
-    /// <summary>Best-effort token → method-name resolution against modules loaded in dnSpy,
-    /// matching the runtime module by filename.</summary>
-    static string? ResolveTokenName(MethodResolver resolver, string moduleName, uint token) {
-        foreach (var mod in resolver.GetAllModules()) {
-            string modName = mod.Name ?? string.Empty;
-            if (!string.Equals(Path.GetFileName(modName), Path.GetFileName(moduleName),
-                    StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (mod.ResolveToken((int)token) is MethodDef md)
-                return md.FullName;
-        }
-        return null;
-    }
 }

@@ -88,9 +88,22 @@ public static class DebuggerTools {
     public static string DebugListBreakpoints() =>
         Safe(() => DnSpyDebuggerService.IsAvailable ? DnSpyDebuggerService.ListBreakpoints() : NotAvailable);
 
-    [Description("Returns the managed call stack of the current thread while paused: module!method + IL offset per frame. Method names are resolved from assemblies loaded in dnSpy (best-effort; raw token when unresolved). max_frames default 50.")]
-    public static string DebugGetCallstack(int maxFrames = 50) =>
-        Safe(() => DnSpyDebuggerService.IsAvailable ? DnSpyDebuggerService.GetCallstack(maxFrames) : NotAvailable);
+    [Description("Returns the actual runtime call stack while fully paused. max_frames: 1–256 (default 50). Optional pid/thread_id select an exact thread; thread_id requires pid. Does not change GUI selection. Frame indexes match debug_get_locals.")]
+    public static string DebugGetCallstack(int maxFrames = 50, int? pid = null, ulong? threadId = null) =>
+        Safe(() => DnSpyDebuggerService.IsAvailable ? DnSpyDebuggerService.GetCallstack(maxFrames, pid, threadId) : NotAvailable);
+
+    [Description("Lists paused debuggee threads with pid, OS thread_id, managed ID, runtime and current-thread marker. Optional pid filters to one debuggee. Does not change GUI selection.")]
+    public static string DebugListThreads(int? pid = null) =>
+        Safe(() => DnSpyValueService.ListThreads(pid));
+
+    [Description("Reads paused arguments, locals and this from an exact frame into a new bounded snapshot. Optional pid/thread_id; thread_id requires pid. frame_index 0–255, start_index >= 0, count 1–256 (default 64). Does not change GUI selection or execute target methods. Successful reads invalidate previous value IDs; optimized/unavailable values retain errors.")]
+    public static string DebugGetLocals(int? pid = null, ulong? threadId = null,
+        int frameIndex = 0, long startIndex = 0, int count = 64) =>
+        Safe(() => DnSpyValueService.GetLocals(pid, threadId, frameIndex, startIndex, count));
+
+    [Description("Reads one safe child page of a value_id from the latest locals snapshot. start_index >= 0, count 1–256 (default 64). IDs expire on resume/step/stop or a successful locals read. Reads instance fields and arrays only; no getters, ToString, debugger proxies, static fields, Results View or Dynamic View. Strings use bounded engine previews.")]
+    public static string DebugGetValue(string valueId, long startIndex = 0, int count = 64) =>
+        Safe(() => DnSpyValueService.GetValue(valueId, startIndex, count));
 
     [Description("Dismisses modal dialogs in the dnSpy process (e.g. debugger engine error popups that block the UI). Call after a failed debug_start to unblock the UI. Extension-only (requires dnSpy).")]
     public static string DebugDismissDialog() => Safe(DialogCloser.CloseDialogs);

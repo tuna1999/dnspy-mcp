@@ -271,7 +271,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
               → delegates to dnSpy.Contracts.Decompiler.IDecompiler (output identical to dnSpy.exe)
 ```
 
-## Available MCP Tools (52)
+## Available MCP Tools (55)
 
 ### Decompiler
 
@@ -377,8 +377,18 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 | `debug_set_breakpoint` | Method BP by 'Ns.Type::Method' — binds when the module loads, no PDB needed |
 | `debug_delete_breakpoint` | Remove an MCP breakpoint by id |
 | `debug_list_breakpoints` | List MCP breakpoints |
-| `debug_get_callstack` | Managed call stack, method names resolved from loaded modules (best-effort) |
+| `debug_get_callstack` | Actual runtime stack; optional pid/thread_id, frame indexes match locals |
+| `debug_list_threads` | Paused threads with process, OS/managed IDs and current-thread marker |
+| `debug_get_locals` | Bounded runtime locals/arguments/this; explicit frame, process and thread |
+| `debug_get_value` | Safe instance-field/array page; IDs belong to the latest paused locals snapshot |
 | `debug_dismiss_dialog` | Dismiss modal dialogs in the dnSpy process (unblock UI after engine error popups) |
+
+Value inspection uses `NoFuncEval | RawView | NoHideRoots` and
+`NoDebuggerDisplay`, never formatter `FuncEval`, `ToString` or `FullString`.
+Static/Results/Dynamic groups are blocked before count/expansion. Captured
+`ContinueContext` closure invalidates handles; its current getter swaps objects
+on resume. A successful locals read replaces the sole snapshot. Pages are
+1–256 items, retained nodes ≤4,096, formatted fields ≤4,096 UTF-16 units.
 
 ## API Conventions & Quirks
 
