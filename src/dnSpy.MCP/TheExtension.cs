@@ -12,6 +12,7 @@ using dnSpy.Contracts.Extension;
 using dnSpy.Contracts.Output;
 using dnSpy.Contracts.Scripting;
 using dnSpy.MCP.Adapters;
+using dnSpy.MCP.Debugging;
 using dnSpy.MCP.Core.Adapters;
 using dnSpy.MCP.Core.Mcp;
 using dnSpy.MCP.Settings;
@@ -75,6 +76,19 @@ namespace dnSpy.MCP {
                     var treeView = ServiceLocator?.TryResolve<IDocumentTreeView>();
                     var tabService = ServiceLocator?.TryResolve<IDocumentTabService>();
                     TreeViewTools.Initialize(treeView, tabService);
+                    // Debugger bridge (debug_* tools): resolve dnSpy's debugger services the
+                    // same way. Nulls are fine — DebuggerTools degrade to explicit errors.
+                    // Method resolution reuses the same loader stack as the Core tools.
+                    DnSpyDebuggerService.Initialize(
+                        ServiceLocator?.TryResolve<dnSpy.Contracts.Debugger.DbgManager>(),
+                        ServiceLocator?.TryResolve<dnSpy.Contracts.Debugger.Breakpoints.Code.DbgCodeBreakpointsService>(),
+                        ServiceLocator?.TryResolve<dnSpy.Contracts.Debugger.DotNet.Code.DbgDotNetCodeLocationFactory>(),
+                        ServiceLocator?.TryResolve<dnSpy.Contracts.Debugger.Attach.AttachableProcessesService>(),
+                        ServiceLocator?.TryResolve<dnSpy.Contracts.Metadata.IModuleIdProvider>(),
+                        DocumentService is null
+                            ? null
+                            : new dnSpy.MCP.Core.Helpers.MethodResolver(
+                                new DnSpyAssemblyLoader(DocumentService, new WpfUIThreadScheduler())));
 
                     LogServiceLocatorStatus(treeView, tabService);
                     McpLogger.Info("MCP extension loaded");

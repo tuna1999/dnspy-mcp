@@ -132,6 +132,8 @@ jobs:
           New-Item -ItemType Directory -Path "deps" -Force | Out-Null
           @(
             "dnSpy.Contracts.DnSpy.dll", "dnSpy.Contracts.Logic.dll",
+            "dnSpy.Contracts.Debugger.dll", "dnSpy.Contracts.Debugger.DotNet.dll",
+            "dnSpy.Contracts.Debugger.DotNet.CorDebug.dll",
             "ICSharpCode.Decompiler.dll", "dnlib.dll",
             "dnSpy.Decompiler.dll", "dnSpy.Decompiler.ILSpy.Core.dll",
             "ICSharpCode.NRefactory.dll", "ICSharpCode.NRefactory.CSharp.dll",

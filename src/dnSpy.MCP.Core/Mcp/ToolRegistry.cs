@@ -189,6 +189,8 @@ namespace dnSpy.MCP.Core.Mcp {
                 "memberFullName" => new[] { "member", "member_name", "memberName", "target" },
                 // Assembly scoping
                 "assemblyName" => new[] { "assembly", "assembly_name", "module", "moduleName" },
+                // Debugger start
+                "breakAtStart" => new[] { "break", "break_at_entry", "pauseAtEntryPoint" },
                 // Attribute target
                 "targetType" => new[] { "target", "scope", "type" },
                 // Search patterns
@@ -273,11 +275,13 @@ namespace dnSpy.MCP.Core.Mcp {
         }
 
         /// <summary>
-        /// Destructive tools that mutate in-process dnlib metadata. These are serialized by
-        /// McpServerHost so parallel batch requests can't race on shared ModuleDef state.
-        /// Convention: any tool whose name starts with a mutation prefix is treated as destructive.
+        /// Tools whose side effects must be serialized: they mutate in-process dnlib metadata
+        /// (update/rename/patch) or drive the single shared debugger session (debug_). Both
+        /// hosts use this predicate so the same prefix list governs both transports.
+        /// Convention: any tool whose name starts with one of these prefixes is serialized
+        /// (Extension HTTP via McpServerHost._mutationLock, Headless via MutationGate filter).
         /// </summary>
-        private static readonly string[] s_mutationPrefixes = { "update_", "rename_", "patch_" };
+        private static readonly string[] s_mutationPrefixes = { "update_", "rename_", "patch_", "debug_" };
 
         /// <summary>
         /// Destructive tools that mutate in-process dnlib metadata. Both hosts (Extension

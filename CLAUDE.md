@@ -271,7 +271,7 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
               → delegates to dnSpy.Contracts.Decompiler.IDecompiler (output identical to dnSpy.exe)
 ```
 
-## Available MCP Tools (38)
+## Available MCP Tools (52)
 
 ### Decompiler
 
@@ -360,6 +360,25 @@ AI agent POST http://127.0.0.1:5150/  (JSON-RPC 2.0 batch)
 | `rename_namespace` | Rename namespace across matching types (dry-run by default) |
 | `rename_class` | Rename one class (dry-run by default) |
 | `rename_method` | Rename methods by exact/partial match (dry-run by default) |
+
+### Debugger (Extension-only — requires the dnSpy host; not available headless)
+
+| Tool | Description |
+|------|-------------|
+| `debug_get_state` | Session state: debugging/running, processes, current thread, last break |
+| `debug_list_processes` | Attachable .NET processes (pid, runtime, arch, filename) |
+| `debug_start` | Start an exe under the debugger (runtime auto-detect, break-at-entry default) |
+| `debug_attach` | Attach to a running .NET process by pid |
+| `debug_stop` | Stop session: stop (default) / detach / terminate (terminate defaults to dry-run) |
+| `debug_continue` | Run all debuggee processes |
+| `debug_break_all` | Request a break in all debuggees |
+| `debug_step` | Step the current thread: into / over (default) / out |
+| `debug_wait_paused` | Wait (timeout_ms, default 10000) until paused, then return state |
+| `debug_set_breakpoint` | Method BP by 'Ns.Type::Method' — binds when the module loads, no PDB needed |
+| `debug_delete_breakpoint` | Remove an MCP breakpoint by id |
+| `debug_list_breakpoints` | List MCP breakpoints |
+| `debug_get_callstack` | Managed call stack, method names resolved from loaded modules (best-effort) |
+| `debug_dismiss_dialog` | Dismiss modal dialogs in the dnSpy process (unblock UI after engine error popups) |
 
 ## API Conventions & Quirks
 

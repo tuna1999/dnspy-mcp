@@ -40,7 +40,10 @@ $requiredDlls = @(
     'dnSpy.Contracts.DnSpy.dll',
     'dnSpy.Contracts.Logic.dll',
     'dnlib.dll',
-    'ICSharpCode.Decompiler.dll',
+    # Debugger tools (Extension-only):
+    'dnSpy.Contracts.Debugger.dll',
+    'dnSpy.Contracts.Debugger.DotNet.dll',
+    'dnSpy.Contracts.Debugger.DotNet.CorDebug.dll',
     # Headless-only:
     'dnSpy.Decompiler.dll',
     'dnSpy.Decompiler.ILSpy.Core.dll',

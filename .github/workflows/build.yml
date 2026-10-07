@@ -104,6 +104,9 @@ jobs:
           $required = @(
             "dnSpy.Contracts.DnSpy.dll",
             "dnSpy.Contracts.Logic.dll",
+            "dnSpy.Contracts.Debugger.dll",
+            "dnSpy.Contracts.Debugger.DotNet.dll",
+            "dnSpy.Contracts.Debugger.DotNet.CorDebug.dll",
             "ICSharpCode.Decompiler.dll",
             "dnlib.dll",
             # Headless-only:
@@ -136,6 +139,9 @@ jobs:
           $required = @(
             "dnSpy.Contracts.DnSpy.dll",
             "dnSpy.Contracts.Logic.dll",
+            "dnSpy.Contracts.Debugger.dll",
+            "dnSpy.Contracts.Debugger.DotNet.dll",
+            "dnSpy.Contracts.Debugger.DotNet.CorDebug.dll",
             "ICSharpCode.Decompiler.dll",
             "dnlib.dll",
             "dnSpy.Decompiler.dll",

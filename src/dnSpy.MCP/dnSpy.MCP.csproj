@@ -41,6 +41,18 @@
       <HintPath>$(DnSpyBin)\dnlib.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="dnSpy.Contracts.Debugger">
+      <HintPath>$(DnSpyBin)\dnSpy.Contracts.Debugger.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="dnSpy.Contracts.Debugger.DotNet">
+      <HintPath>$(DnSpyBin)\dnSpy.Contracts.Debugger.DotNet.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="dnSpy.Contracts.Debugger.DotNet.CorDebug">
+      <HintPath>$(DnSpyBin)\dnSpy.Contracts.Debugger.DotNet.CorDebug.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- NuGet package references -->

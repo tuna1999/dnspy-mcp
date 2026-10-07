@@ -7,7 +7,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [dn
 
 ## Highlights
 
-- **38 MCP tools** — decompilation, IL analysis, cross-references, search, resource inspection, renaming, and IL patching
+- **52 MCP tools** — static analysis, IL patching, and integrated debugger control (36 tools in headless)
 - **Byte-identical decompiler output** — powered by the same `ICSharpCode.Decompiler` pipeline dnSpy.exe uses
 - **Two hosts, one core** — run as a dnSpy extension (HTTP) or a standalone headless exe (stdio); identical tools and output
 - **Zero-drag transport** — the extension uses a minimal `TcpListener`-based HTTP transport, avoiding version conflicts with dnSpy's runtime
@@ -33,7 +33,7 @@ Two hosts share one tool core (`dnSpy.MCP.Core`):
 - **Extension** — runs inside dnSpy with full UI integration (tree view, tabs, Output pane). Started manually from the **MCP Server** menu so WPF is fully initialized before any tool call touches the UI thread.
 - **Headless** — standalone stdio MCP server for batch analysis: same tools, same decompiled output, no UI, no dnSpy install required at analysis time (only the vendored decompiler DLLs in `deps/`).
 
-## Tools (38 total · 36 in headless)
+## Tools (52 total · 36 in headless)
 
 ### Decompiler
 | Tool | Description |
@@ -116,6 +116,29 @@ Two hosts share one tool core (`dnSpy.MCP.Core`):
 | `rename_namespace` | Rename a namespace across matching types (dry-run supported) |
 | `rename_class` | Rename one class in an assembly+namespace (dry-run supported) |
 | `rename_method` | Rename methods by exact or partial match (dry-run supported) |
+
+### Debugger *(Extension only — needs the dnSpy host; not in headless)*
+| Tool | Description |
+|------|-------------|
+| `debug_get_state` | Session state: debugging/running, processes, current thread, last break |
+| `debug_list_processes` | Attachable .NET processes (pid, name, runtime, arch, filename) |
+| `debug_start` | Start an EXE or managed DLL (`runtime`: auto/netfx/dotnet); omitted/empty `working_dir` uses the target folder; break-at-entry by default |
+| `debug_attach` | Attach to a running .NET process by pid |
+| `debug_stop` | Stop the session — `stop` (default) / `detach` / `terminate` (terminate is dry-run by default) |
+| `debug_continue` | Run all debuggee processes |
+| `debug_break_all` | Request a break in all debuggees |
+| `debug_step` | Step the current thread (`into`/`over`/`out`) |
+| `debug_wait_paused` | Block until paused (timeout_ms), then return the state |
+| `debug_set_breakpoint` | Breakpoint on `Namespace.Type::Method` — binds on module load, no PDB needed |
+| `debug_delete_breakpoint` | Delete an MCP breakpoint by id |
+| `debug_list_breakpoints` | List MCP breakpoints |
+| `debug_get_callstack` | Managed call stack; names resolved from assemblies loaded in dnSpy |
+| `debug_dismiss_dialog` | Dismiss dnSpy modal error dialogs after a failed launch |
+
+For modern .NET, managed images run through `dotnet.exe`; native apphost EXEs
+launch directly. For an apphost, load its companion managed DLL before setting
+method breakpoints. `debug_start` checks the actual process state, not just
+whether dnSpy accepted the asynchronous launch request.
 
 ### Tips
 

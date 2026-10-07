@@ -60,6 +60,18 @@
       <HintPath>..\..\deps\dnlib.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="dnSpy.Contracts.Debugger">
+      <HintPath>..\..\deps\dnSpy.Contracts.Debugger.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="dnSpy.Contracts.Debugger.DotNet">
+      <HintPath>..\..\deps\dnSpy.Contracts.Debugger.DotNet.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="dnSpy.Contracts.Debugger.DotNet.CorDebug">
+      <HintPath>..\..\deps\dnSpy.Contracts.Debugger.DotNet.CorDebug.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
 </Project>
